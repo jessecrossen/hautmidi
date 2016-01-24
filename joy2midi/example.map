@@ -1,0 +1,22 @@
+# report everything
+verbosity = 3
+
+# pitch bend
+axis 0 => bend
+# modulation
+axis 1 [-32767..0] => control 2 [64..127]
+axis 1 [0..32767] => control 2 [64..0]
+# breath controller
+axis 2 => control 1
+
+# Harmonix Drum Kit
+# green
+button 0 => note 47
+# red
+button 1 => note 40
+# blue
+button 2 => note 38
+# yellow
+button 3 => note 44
+# orange
+button 4 => note 36
