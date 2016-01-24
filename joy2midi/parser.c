@@ -66,7 +66,7 @@ number:
 parameter:
   VERBOSITY '=' number { verbosity = $3; }
 | DEBOUNCE '=' number  { debounce = $3; }
-| CHANNEL '=' number { channel = (($3 + 1) & 0xF); }
+| CHANNEL '=' number { channel = (($3 - 1) & 0xF); }
 ;
 
 mapping:
