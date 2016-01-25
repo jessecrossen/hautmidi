@@ -38,10 +38,10 @@ something similar and need more than just this description, please let me know.
 # Pics (or it didn't happen)
 
 Overview of the device:
-![Overview of the device](tonestrip/pics/overview.jpg)
+![Overview of the device](pics/overview.jpg)
 
 The left hand controls:
-![The left hand controls](tonestrip/pics/left.jpg)
+![The left hand controls](pics/left.jpg)
 
 The guts that make it work:
-![The guts that make it work](tonestrip/pics/guts.jpg)
+![The guts that make it work](pics/guts.jpg)
