@@ -30,6 +30,7 @@
 #define MIDI_MAX 127
 #define MIDI_CHANNEL 1
 #define MIDI_MOD_CC 1
+#define MIDI_BREATH_CC 2
 #define ROOT_NOTE 48
 
 // make a struct to store values from an analog input
@@ -184,6 +185,8 @@ void loop() {
       // continuing notes
       else if (inState.velocity > 0) {
         usbMIDI.sendPolyPressure(inState.note, inState.velocity, MIDI_CHANNEL);
+        // duplicate to breath controller for synths with no aftertouch support
+        usbMIDI.sendControlChange(MIDI_BREATH_CC, inState.velocity, MIDI_CHANNEL);
       }
     }
     // update changed pitch bend
