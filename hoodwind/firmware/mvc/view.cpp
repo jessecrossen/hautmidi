@@ -34,13 +34,13 @@ void View::setRect(Rect r) {
     invalidate();
   }
 }
-void View::setWidth(int16_t w) {
+void View::setWidth(coord_t w) {
   if (w != _r.w) {
     _r.w = w;
     invalidate();
   }
 }
-void View::setHeight(int16_t h) {
+void View::setHeight(coord_t h) {
   if (h != _r.h) {
     _r.h = h;
     invalidate();
@@ -196,8 +196,8 @@ void View::release(Point p) {
 // LAYOUT CONTAINERS **********************************************************
 
 void HStack::layout() {
-  int16_t w;
-  int16_t x = _r.x;
+  coord_t w;
+  coord_t x = _r.x;
   View *child = _children;
   while (child != NULL) {
     w = child->rect().w;
@@ -208,8 +208,8 @@ void HStack::layout() {
 }
 
 void VStack::layout() {
-  int16_t h;
-  int16_t y = _r.y;
+  coord_t h;
+  coord_t y = _r.y;
   View *child = _children;
   while (child != NULL) {
     h = child->rect().h;
@@ -229,7 +229,7 @@ void ScreenStack::addChild(View *child) {
 }
 
 void ScreenStack::draw(Screen *s) {
-  s->fillRect(_r.x, _r.y, _r.w, _r.h, _cs.bg);
+  s->fillRect(_r, _cs.bg);
 }
 
 void ScreenStack::layout() {
@@ -325,10 +325,10 @@ void Button::release(Point p) {
 
 void Button::draw(Screen *s) {
   // select a color for the button background
-  uint16_t bg = _cs.bg;
+  color_t bg = _cs.bg;
   if (_enabled) bg = (_toggled || _touched) ? _cs.accent : _cs.active;
   // draw the background
-  s->fillRect(_r.x + 1, _r.y + 1, _r.w - 2, _r.h - 2, bg);
+  s->fillRect(insetRect(_r, 1), bg);
   // draw the label, if any
   if (_label != NULL) {
     s->setTextColor(_cs.fg, bg);
@@ -380,19 +380,24 @@ void Slider::drag(Point p) {
 
 void Slider::draw(Screen *s) {
   // select a color for the slider background
-  uint16_t bg = _enabled ? _cs.active : _cs.bg;
+  color_t bg = _enabled ? _cs.active : _cs.bg;
+  Rect ra = insetRect(_r, 1);
+  Rect rb = ra;
+  coord_t v;
   // detect orientation
   if (_r.w > _r.h) {
-    int16_t vw = (int16_t)((float)(_r.w - 2) * _value);
-    int16_t nvw = (_r.w - 2) - vw;
-    if (vw > 0) s->fillRect(_r.x + 1, _r.y + 1, vw, _r.h - 2, _cs.accent);
-    if (nvw > 0) s->fillRect((_r.x + 1) + vw, _r.y + 1, nvw, _r.h - 2, bg);
+    v = (coord_t)((float)(ra.w) * _value);
+    rb = trimRect(ra, 0, 0, 0, v);
+    ra = trimRect(ra, 0, rb.w, 0, 0);
+    if (ra.w > 0) s->fillRect(ra, _cs.accent);
+    if (rb.w > 0) s->fillRect(rb, bg);
   }
   else {
-    int16_t vh = (int16_t)((float)(_r.h - 2) * _value);
-    int16_t nvh = (_r.h - 2) - vh;
-    if (nvh > 0) s->fillRect(_r.x + 1, _r.y + 1, _r.w - 2, nvh, bg);
-    if (vh > 0) s->fillRect(_r.x + 1, _r.y + nvh, _r.w - 2, vh, _cs.accent);
+    v = (coord_t)((float)(ra.h) * _value);
+    rb = trimRect(ra, v, 0, 0, 0);
+    ra = trimRect(ra, 0, 0, rb.h, 0);
+    if (ra.h > 0) s->fillRect(ra, _cs.accent);
+    if (rb.h > 0) s->fillRect(rb, bg);
   }
   // draw the label, if any
   if (_label != NULL) {

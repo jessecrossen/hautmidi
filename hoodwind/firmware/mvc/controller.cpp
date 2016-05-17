@@ -12,11 +12,12 @@ Controller::Controller() : View() {
   _root = NULL;
   _touchedView = NULL;
   _touch = new Touch;
-  _screen = new Screen;
+  _screen = new Screen(ScreenPinoutWithAudio);
+  _screen->setBrightnessPin(3);
   _touchReleasedSinceWake = true;
 }
 
-void Controller::setRotation(uint8_t r) {
+void Controller::setRotation(ScreenRotation r) {
   if (r != _screen->rotation()) {
     _screen->setRotation(r);
     setRect({ .x = 0, .y = 0, .w = _screen->width(), .h = _screen->height() });
@@ -28,7 +29,7 @@ void Controller::begin() {
   _screen->begin();
   _touch->begin();
   // fill the screen
-  setRotation(0);
+  setRotation(ScreenRotationCableDown);
   // start the update clock
   sinceLastUpdate = 0;
 }
@@ -57,7 +58,7 @@ void Controller::layout() {
 }
 
 void Controller::draw(Screen *s) {
-  s->fillRect(_r.x, _r.y, _r.w, _r.h, _cs.bg);
+  s->fillRect(_r, _cs.bg);
 }
 
 void Controller::update() {
@@ -85,7 +86,8 @@ void Controller::update() {
     _setTouchedView(NULL);
     _touchReleasedSinceWake = true;
   }
-  // control display sleep
+  // if there has been no touch for some time, dim the display gradually
+  //  and put it to sleep after it's fully dimmed
   if (sinceLastTouch > SLEEP_TIMEOUT) {
     uint8_t brightness = _screen->brightness();
     if (brightness > 0) {
@@ -96,10 +98,8 @@ void Controller::update() {
       _screen->setSleeping(true);
     }
   }
-  else {
-    // re-render views if we're not in sleep mode
-    render(_screen);
-  }
+  // re-render views if we're not in sleep mode
+  if (! _screen->isSleeping()) render(_screen);
 }
 
 void Controller::_setTouchedView(View *tv) {

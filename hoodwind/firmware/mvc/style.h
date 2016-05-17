@@ -3,12 +3,14 @@
 
 typedef ILI9341_t3_font_t Font;
 
+typedef uint16_t color_t;
+
 // define a standardized color scheme format
 typedef struct {
-  uint16_t bg; // background
-  uint16_t fg; // foreground
-  uint16_t active; // used to indicate that an area accepts touches
-  uint16_t accent; // a color that pops against the others
+  color_t bg; // background
+  color_t fg; // foreground
+  color_t active; // used to indicate that an area accepts touches
+  color_t accent; // a color that pops against the others
 } ColorScheme;
 
 // define a standardized text scheme format

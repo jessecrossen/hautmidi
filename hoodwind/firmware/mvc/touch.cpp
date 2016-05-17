@@ -6,16 +6,16 @@ Point Touch::getScreenPoint(Screen *s) {
   // map the point to screen coordinates
   TS_Point tp = getPoint();
   // get a rotation-invariant screen size
-  int16_t temp;
-  int16_t screenWidth = s->width();
-  int16_t screenHeight = s->height();
-  int16_t sizeLong = screenWidth;
-  int16_t sizeShort = screenHeight;
+  coord_t temp;
+  coord_t screenWidth = s->width();
+  coord_t screenHeight = s->height();
+  coord_t sizeLong = screenWidth;
+  coord_t sizeShort = screenHeight;
   if (sizeShort > sizeLong) {
     temp = sizeLong; sizeLong = sizeShort; sizeShort = temp;
   }
-  Point p = { .x = (int16_t)map(tp.x, TS_MINX, TS_MAXX, 0, sizeLong),
-              .y = (int16_t)map(tp.y, TS_MINY, TS_MAXY, 0, sizeShort) };
+  Point p = { .x = (coord_t)map(tp.x, TS_MINX, TS_MAXX, 0, sizeLong),
+              .y = (coord_t)map(tp.y, TS_MINY, TS_MAXY, 0, sizeShort) };
   // compensate for rotation
   uint8_t rotation = s->rotation();
   if ((rotation == 0) || (rotation == 2)) {

@@ -77,11 +77,11 @@ void ScaleMenu::layout() {
   int i;
   PitchClass tonic = _scale->tonic();
   ScaleType type = _scale->type();
-  int16_t bw = _r.w / 4;
-  int16_t bh = bw;
-  int16_t x = _r.x;
-  int16_t y = _r.y;
-  int16_t right = _r.x + _r.w;
+  coord_t bw = _r.w / 4;
+  coord_t bh = bw;
+  coord_t x = _r.x;
+  coord_t y = _r.y;
+  coord_t right = _r.x + _r.w;
   for (i = 0; i < PitchClassCount; i++) {
     _tonicButtons[i]->setToggled(i == tonic);
     _tonicButtons[i]->setRect({ .x = x, .y = y, .w = bw, .h = bh });
@@ -127,11 +127,11 @@ void OctaveMenu::onButton(Button *target) {
 void OctaveMenu::layout() {
   int i;
   uint8_t selected = _scale->centerOctave() - CenterOctaveMin;
-  int16_t bw = _r.w / 2;
-  int16_t bh = _r.h / 4;
-  int16_t x = _r.x;
-  int16_t y = _r.y;
-  int16_t right = _r.x + _r.w;
+  coord_t bw = _r.w / 2;
+  coord_t bh = _r.h / 4;
+  coord_t x = _r.x;
+  coord_t y = _r.y;
+  coord_t right = _r.x + _r.w;
   for (i = 0; i < CenterOctaveCount; i++) {
     _octaveButtons[i]->setToggled(i == selected);
     _octaveButtons[i]->setRect({ .x = x, .y = y, .w = bw, .h = bh });
@@ -165,7 +165,7 @@ InputDisplay::InputDisplay() : View() {
   _sliders = new VStack;
   addChild(_sliders);
   // use a smaller text scheme on sliders and status buttons
-  int16_t sliderHeight = 20;
+  coord_t sliderHeight = 20;
   TextScheme smallText = _ts;
   smallText.font = &LiberationMono_10_Bold;
   smallText.size = 10;
@@ -211,11 +211,11 @@ void InputDisplay::onButton(Button *target) {
 void InputDisplay::layout() {
   int i;
   // do layout
-  int16_t x = _r.x;
-  int16_t y = _r.y;
-  int16_t w = _r.w / 2;
-  int16_t h = _biteSlider->rect().h;
-  int16_t sliderCount = InputKeyCount + 1;
+  coord_t x = _r.x;
+  coord_t y = _r.y;
+  coord_t w = _r.w / 2;
+  coord_t h = _biteSlider->rect().h;
+  uint8_t sliderCount = InputKeyCount + 1;
   _lowRegisterButton->setRect({ .x = x, .y = y, .w = w, .h = h });
   x += w;
   _highRegisterButton->setRect({ .x = x, .y = y, .w = w, .h = h });

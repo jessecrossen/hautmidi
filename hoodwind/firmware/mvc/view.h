@@ -19,8 +19,8 @@ class View {
     // get/set the rect to draw the view on
     Rect rect();
     void setRect(Rect r);
-    void setWidth(int16_t w);
-    void setHeight(int16_t h);
+    void setWidth(coord_t w);
+    void setHeight(coord_t h);
     // get/set the color scheme of the view
     ColorScheme colorScheme();
     void setColorScheme(ColorScheme cs);

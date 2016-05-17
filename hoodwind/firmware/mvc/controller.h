@@ -15,7 +15,7 @@ class Controller : public View {
     Controller();
     
     // set screen rotation
-    void setRotation(uint8_t r);
+    void setRotation(ScreenRotation r);
     
     // initialize resources
     void begin();

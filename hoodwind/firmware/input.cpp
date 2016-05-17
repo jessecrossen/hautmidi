@@ -26,13 +26,11 @@ InputModel::InputModel() : Model() {
   }
   // reset the calibrations
   for (i = 0; i < InputCount; i++) {
+    _calibrations[i].pin = 255;
     _calibrations[i].isTouch = false;
     _calibrations[i].min = _calibrations[i].first = _calibrations[i].max = 0;
     _calibrations[i].raw = 0;
     _calibrations[i].value = 0.0;
-    if (_calibrations[i].pin > 0) {
-      pinMode(_calibrations[i].pin, INPUT);
-    }
   }
   // configure the pinout
   _calibrations[R1].pin = 37;
@@ -43,11 +41,14 @@ InputModel::InputModel() : Model() {
   _calibrations[L2].pin = 26;
   _calibrations[L3].pin = 27;
   _calibrations[L4].pin = 28;
-  _calibrations[Bite].pin = 0;
-  _calibrations[HighRegister].pin = 0;
   _calibrations[HighRegister].isTouch = true;
-  _calibrations[LowRegister].pin = 0;
   _calibrations[LowRegister].isTouch = true;
+  // set all valid pins to input
+  for (i = 0; i < InputCount; i++) {
+    if (_calibrations[i].pin < 255) {
+      pinMode(_calibrations[i].pin, INPUT);
+    }
+  }
   // configure analog input
   analogReadResolution(12);
   analogReference(EXTERNAL);
@@ -131,7 +132,7 @@ void InputModel::read() {
   Calibration *cal;
   for (i = 0; i < InputCount; i++) {
     cal = &(_calibrations[i]);
-    if (! (cal->pin > 0)) continue;
+    if (cal->pin == 255) continue;
     if (cal->isTouch) cal->raw = touchRead(cal->pin);
     else cal->raw = analogRead(cal->pin);
     // calibrate if needed
