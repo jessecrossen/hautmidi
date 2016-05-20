@@ -1,7 +1,7 @@
 #ifndef _HOODWIND_style_h_
 #define _HOODWIND_style_h_
 
-typedef ILI9341_t3_font_t Font;
+#include "fonts.h"
 
 typedef uint16_t color_t;
 
@@ -16,7 +16,6 @@ typedef struct {
 // define a standardized text scheme format
 typedef struct {
   const Font *font;
-  uint8_t size;
   float xalign; // 0.0 = left, 0.5 = center, 1.0 = right
   float yalign; // 0.0 = top, 0.5 = middle, 1.0 = bottom
 } TextScheme;

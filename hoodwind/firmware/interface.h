@@ -3,6 +3,7 @@
 
 #include "mvc/view.h"
 #include "mvc/controller.h"
+#include "mvc/fonts.h"
 #include "instrument.h"
 
 class ScaleMenu : public View, public ButtonAction {

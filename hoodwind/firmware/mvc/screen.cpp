@@ -194,6 +194,30 @@ void Screen::setBrightness(uint8_t v) {
 
 // DRAWING *******************************************************************
 
+void Screen::fillScanBuffer(coord_t x, coord_t w, color_t c) {
+  color_t *p = scanBuffer + x;
+  for (x = 0; x < w; x++) {
+    *p++ = c;
+  }
+}
+
+void Screen::commitScanBuffer(coord_t x, coord_t y, coord_t w) {
+  // clip to available bounds and make sure we have a positive area
+  if (x + w > _width) w = _width - x;
+  if ((w <= 0) || (w > _width)) return;
+  // select the scan line on the device
+  BEGIN_TRANSACTION
+  setRegion({ .x = x, .y = y, .w = w, .h = 1 });
+  // transfer pixels from the scan buffer
+  color_t *p = scanBuffer;
+  _send((uint8_t)ILI9341_RAMWR, true);
+  for (int i = 0; i < w - 1; i++) {
+    _send(*p++);
+  }
+  _send(*p++, false, true);
+  END_TRANSACTION
+}
+
 void Screen::fillRect(Rect r, uint16_t color) {
   uint16_t x, y;
 	// clip the rectangle to the screen
@@ -202,7 +226,7 @@ void Screen::fillRect(Rect r, uint16_t color) {
 	if ((r.y + r.h - 1) >= _height) r.h = _height - r.y;
 	BEGIN_TRANSACTION
 	setRegion(r);
-	_command({ .cmd=ILI9341_RAMWR, .argc=0 });
+	_send((uint8_t)ILI9341_RAMWR, true);
 	for (y = r.h; y > 0; y--) {
 	  // send each scanline as a separate transaction
 		for (x = r.w; x > 1; x--) _send(color);
@@ -216,14 +240,37 @@ void Screen::fillRect(Rect r, uint16_t color) {
 	END_TRANSACTION
 }
 
-void Screen::drawTextInRect(const char *string, Rect r, TextScheme ts) {
-  // roughly compute the text size
-  int16_t tw = (strlen(string) * ts.size * 5) / 6;
-  int16_t th = ts.size;
-  // position the text in the box
-  setCursor(r.x + (int16_t)((float)(r.w - tw) * ts.xalign),
-            r.y + (int16_t)((float)(r.h - th) * ts.yalign));
-  // draw the text
-  setFont(*ts.font);
-  print(string);
+void Screen::scanText(coord_t tx, coord_t ty, const char *s, const Font *font, color_t color) {
+  // bounds check
+  uint8_t charWidth = font->charWidth;
+  uint8_t charHeight = font->charHeight;
+  if ((tx < 0) || (tx >= SCAN_BUFFER_SIZE)) return;
+  if ((ty < 0) || (ty >= font->charHeight)) return;
+  // index into the scan buffer and string
+  uint8_t charCount = font->asciiMax - font->asciiMin;
+  uint8_t charOffset;
+  uint16_t charLine;
+  color_t *curr = scanBuffer + tx;
+  color_t *next;
+  for (char *c = (char *)s; *c != 0x00; c++) {
+    // precompute the position of the next character before we advance the pointer
+    next = curr + charWidth;
+    // make sure we don't go outside the scan buffer
+    tx += charWidth;
+    if (tx >= SCAN_BUFFER_SIZE) break;
+    // make sure the character is in range
+    charOffset = *c - font->asciiMin;
+    if (charOffset < charCount) {
+      // index into the font data for this character
+      charLine = font->data[(charOffset * charHeight) + ty];
+      // draw bit until we run out
+      while (charLine != 0) {
+        if (charLine & 0x01) *curr = color;
+        charLine >>= 1;
+        curr++;
+      }
+    }
+    // advance to the next character position
+    curr = next;
+  }
 }

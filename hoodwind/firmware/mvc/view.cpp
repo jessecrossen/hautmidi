@@ -18,8 +18,7 @@ View::View() {
       .accent = ILI9341_RED
     };
   _ts = {
-      .font = &LiberationMono_18_Bold,
-      .size = 18,
+      .font = fontWithHeight(22),
       .xalign = 0.5,
       .yalign = 0.5
     };
@@ -60,7 +59,7 @@ void View::setColorScheme(ColorScheme cs) {
 // text scheme access
 TextScheme View::textScheme() { return(_ts); }
 void View::setTextScheme(TextScheme ts) {
-  if ((_ts.font != ts.font) || (_ts.size != ts.size) || 
+  if ((_ts.font != ts.font) || 
       (_ts.xalign != ts.xalign) || (_ts.yalign != ts.yalign)) {
     _ts = ts;
     invalidate();
@@ -279,10 +278,47 @@ void ScreenStack::setCurrentChild(View *newChild) {
   }
 }
 
+// ADD LABEL ******************************************************************
+
+const char *ViewWithLabel::label() { return(_label); }
+void ViewWithLabel::setLabel(const char *s) {
+  if (_label != s) {
+    _label = s;
+    invalidate();
+  }
+}
+
+void ViewWithLabel::draw(Screen *s) {
+  coord_t y;
+  coord_t tb, tx, ty;
+  tb = tx = ty = -1;
+  if (_label != NULL) {
+    // compute the text size
+    coord_t tw = strlen(_label) * _ts.font->charWidth;
+    coord_t th = _ts.font->charHeight;
+    // position the text in the box according to alignment
+    tx = (coord_t)((float)(_r.w - tw) * _ts.xalign);
+    ty = (coord_t)((float)(_r.h - th) * _ts.yalign);
+    tb = ty + th;
+  }
+  // fill the background
+  for (y = 0; y < _r.h; y++) {
+    _drawBackScan(s, y, _r.w);
+    // draw text when we get to its box
+    if ((y >= ty) && (y < tb)) {
+      s->scanText(tx, y - ty, _label, _ts.font, _cs.fg);
+    }
+    s->commitScanBuffer(_r.x, _r.y + y, _r.w);
+  }
+}
+void ViewWithLabel::_drawBackScan(Screen *s, coord_t y, coord_t w) {
+  // implement in subclasses
+  s->fillScanBuffer(0, w, _cs.bg);
+}
+
 // BUTTON VIEW ****************************************************************
 
-Button::Button() : View() {
-  _label = NULL;
+Button::Button() : ViewWithLabel() {
   _toggled = _touched = false;
   _enabled = true;
   action = NULL;
@@ -292,14 +328,6 @@ Button::Button(const char *s) : Button() {
 }
 Button::Button(const char *s, ButtonType t) : Button(s) {
   type = t;
-}
-
-const char *Button::label() { return(_label); }
-void Button::setLabel(const char *s) {
-  if (_label != s) {
-    _label = s;
-    invalidate();
-  }
 }
 
 bool Button::toggled() { return(_toggled); }
@@ -323,37 +351,30 @@ void Button::release(Point p) {
   invalidate();
 }
 
-void Button::draw(Screen *s) {
-  // select a color for the button background
+void Button::_drawBackScan(Screen *s, coord_t y, coord_t w) {
+  // draw blank edges at top and bottom
+  if ((y == 0) || (y == _r.h - 1)) {
+    s->fillScanBuffer(0, w, _cs.bg);
+    return;
+  }
+  // draw the button area
   color_t bg = _cs.bg;
   if (_enabled) bg = (_toggled || _touched) ? _cs.accent : _cs.active;
-  // draw the background
-  s->fillRect(insetRect(_r, 1), bg);
-  // draw the label, if any
-  if (_label != NULL) {
-    s->setTextColor(_cs.fg, bg);
-    s->drawTextInRect(_label, _r, _ts);
-  }
+  s->fillScanBuffer(1, w - 2, bg);
+  // draw blank edges at left and right
+  s->scanBuffer[0] = _cs.bg;
+  s->scanBuffer[w - 1] = _cs.bg;
 }
 
 // SLIDER VIEW ****************************************************************
 
-Slider::Slider() : View() {
-  _label = NULL;
+Slider::Slider() : ViewWithLabel() {
   _value = 0.5;
   _enabled = true;
   action = NULL;
 }
 Slider::Slider(const char *s) : Slider() {
   setLabel(s);
-}
-
-const char *Slider::label() { return(_label); }
-void Slider::setLabel(const char *s) {
-  if (_label != s) {
-    _label = s;
-    invalidate();
-  }
 }
 
 float Slider::value() { return(_value); }
@@ -379,29 +400,33 @@ void Slider::drag(Point p) {
 }
 
 void Slider::draw(Screen *s) {
-  // select a color for the slider background
+  // detect orientation and compute the size of the filled bar
+  if (_r.w > _r.h) { // horizontal
+    _valueSize = (coord_t)((float)(_r.w - 2) * _value);
+  }
+  else { // vertical
+    _valueSize = (coord_t)((float)(_r.h - 2) * _value);
+  }
+  ViewWithLabel::draw(s);
+}
+
+void Slider::_drawBackScan(Screen *s, coord_t y, coord_t w) {
+  // draw blank edges at top and bottom
+  if ((y == 0) || (y == _r.h - 1)) {
+    s->fillScanBuffer(0, w, _cs.bg);
+    return;
+  }
+  // fill in the center part
   color_t bg = _enabled ? _cs.active : _cs.bg;
-  Rect ra = insetRect(_r, 1);
-  Rect rb = ra;
-  coord_t v;
-  // detect orientation
-  if (_r.w > _r.h) {
-    v = (coord_t)((float)(ra.w) * _value);
-    rb = trimRect(ra, 0, 0, 0, v);
-    ra = trimRect(ra, 0, rb.w, 0, 0);
-    if (ra.w > 0) s->fillRect(ra, _cs.accent);
-    if (rb.w > 0) s->fillRect(rb, bg);
+  if (_r.w > _r.h) { // horizontal
+    s->fillScanBuffer(1, _valueSize, _cs.accent);
+    s->fillScanBuffer(1 + _valueSize, (_r.w - 2) - _valueSize, bg);
   }
-  else {
-    v = (coord_t)((float)(ra.h) * _value);
-    rb = trimRect(ra, v, 0, 0, 0);
-    ra = trimRect(ra, 0, 0, rb.h, 0);
-    if (ra.h > 0) s->fillRect(ra, _cs.accent);
-    if (rb.h > 0) s->fillRect(rb, bg);
+  else { // vertical
+    s->fillScanBuffer(1, _r.w - 2, 
+      ((_r.h - 1) - y <= _valueSize) ? _cs.accent : bg);
   }
-  // draw the label, if any
-  if (_label != NULL) {
-    s->setTextColor(_cs.fg, bg);
-    s->drawTextInRect(_label, _r, _ts);
-  }
+  // draw blank edges at left and right
+  s->scanBuffer[0] = _cs.bg;
+  s->scanBuffer[w - 1] = _cs.bg;
 }

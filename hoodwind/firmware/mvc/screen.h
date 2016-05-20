@@ -6,6 +6,10 @@
 
 #include "geom.h"
 #include "style.h"
+#include "fonts.h"
+
+// the number of pixels to allocate for the scan line buffer
+#define SCAN_BUFFER_SIZE ILI9341_TFTHEIGHT
 
 typedef enum {
   ScreenPinoutDefault,
@@ -55,10 +59,16 @@ class Screen : public ILI9341_t3 {
     uint8_t brightness();
     void setBrightness(uint8_t v);
     
-    // drawing functions
-    void fillRect(Rect r, uint16_t color);
-    
-    void drawTextInRect(const char *string, Rect r, TextScheme ts);
+    // a buffer to hold a scan line in preparation for drawing
+    color_t scanBuffer[SCAN_BUFFER_SIZE];
+    // fill the scan buffer with a color
+    void fillScanBuffer(coord_t x, coord_t w, color_t c);
+    // commit a portion of the scan buffer to the device
+    void commitScanBuffer(coord_t x, coord_t y, coord_t w);
+    // fill a rectangle on the screen with the given color
+    void fillRect(Rect r, color_t color);
+    // draw text to a scan line
+    void scanText(coord_t tx, coord_t ty, const char *s, const Font *font, color_t color);
     
   private:
     // the size of the screen

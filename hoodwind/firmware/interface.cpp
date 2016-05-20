@@ -167,8 +167,7 @@ InputDisplay::InputDisplay() : View() {
   // use a smaller text scheme on sliders and status buttons
   coord_t sliderHeight = 20;
   TextScheme smallText = _ts;
-  smallText.font = &LiberationMono_10_Bold;
-  smallText.size = 10;
+  smallText.font = fontWithHeight(10);
   TextScheme smallTextLeft = smallText;
   smallTextLeft.xalign = 0.05;
   // add the toggle buttons to display the register

@@ -136,14 +136,14 @@ Navigation::Navigation() : View() {
 }
 
 void Navigation::layout() {
-  int16_t bh = _topBar->rect().h;
-  int16_t d = _r.w / 4;
+  coord_t bh = _topBar->rect().h;
+  coord_t d = _r.w / 4;
   _prevButton->setWidth(d);
   _exitButton->setWidth(d * 2);
   _nextButton->setWidth(d);
   _topBar->setRect({ .x = _r.x, .y = _r.y, .w = _r.w, .h = bh });
-  screens->setRect({ .x = _r.x, .y = (int16_t)(_r.y + bh), 
-                     .w = _r.w, .h = (int16_t)(_r.h - bh) });
+  screens->setRect({ .x = _r.x, .y = (coord_t)(_r.y + bh), 
+                     .w = _r.w, .h = (coord_t)(_r.h - bh) });
   // enable/disable buttons
   _prevButton->setEnabled(screens->canGoPrev());
   _nextButton->setEnabled(screens->canGoNext());

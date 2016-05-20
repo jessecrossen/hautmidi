@@ -1,12 +1,11 @@
 #ifndef _HOODWIND_view_h_
 #define _HOODWIND_view_h_
 
-#include <font_LiberationMonoBold.h>
-
 #include "screen.h"
 #include "touch.h"
 #include "style.h"
 #include "geom.h"
+#include "fonts.h"
 
 #include "model.h"
 class Model;
@@ -114,6 +113,27 @@ class ScreenStack : public View {
     View *_currentChild;
 };
 
+// ADD TEXT *******************************************************************
+
+class ViewWithLabel : public View {
+  public:
+    ViewWithLabel() : View() {
+      _label = NULL;
+    }
+    // get/set a text label for the view
+    const char *label();
+    void setLabel(const char *s);
+    
+    // draw the view
+    virtual void draw(Screen *s);
+    
+  protected:
+    // draw a scan line of the background
+    virtual void _drawBackScan(Screen *s, coord_t y, coord_t w);
+    // text to show on the view
+    const char *_label;
+};
+
 // BUTTON *********************************************************************
 
 typedef enum {
@@ -127,20 +147,15 @@ class ButtonAction {
     virtual void onButton(Button *) { }
 };
 
-class Button : public View {
+class Button : public ViewWithLabel {
   public:
     Button();
     Button(const char *s);
     Button(const char *s, ButtonType t);
     
-    // access the label
-    const char *label();
-    void setLabel(const char *s);
     // get/set toggle state
     bool toggled();
     void setToggled(bool state);
-    
-    virtual void draw(Screen *s);
     
     // the button's behavior
     ButtonType type;
@@ -152,12 +167,12 @@ class Button : public View {
     virtual void release(Point p);
   
   protected:
-    // text to show on the button
-    const char *_label;
     // whether the button is toggled
     bool _toggled;
     // whether the button has just been touched or is being touched
     bool _touched;
+    // draw the background
+    virtual void _drawBackScan(Screen *s, coord_t y, coord_t w);
 };
 
 // SLIDER ********************************************************************
@@ -172,19 +187,14 @@ class SliderAction {
 //  screen and still receive drags all the way to the edges of the value range
 #define SliderMargin 30
 
-class Slider : public View {
+class Slider : public ViewWithLabel {
   public:
     Slider();
     Slider(const char *s);
     
-    // access the label
-    const char *label();
-    void setLabel(const char *s);
     // get/set value (0.0 to 1.0)
     float value();
     void setValue(float value);
-    
-    virtual void draw(Screen *s);
     
     // the action to take when the slider value changes
     SliderAction *action;
@@ -192,12 +202,16 @@ class Slider : public View {
     // touch response
     virtual void touch(Point p);
     virtual void drag(Point p);
+    
+    virtual void draw(Screen *s);
   
   protected:
-    // text to show on the slider
-    const char *_label;
     // the value of the slider
     float _value;
+    // the number of pixels of fill to map the value to
+    coord_t _valueSize;
+    // draw the background
+    virtual void _drawBackScan(Screen *s, coord_t y, coord_t w);
 };
 
 #endif
