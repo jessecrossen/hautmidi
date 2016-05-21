@@ -12,10 +12,10 @@ View::View() {
   _visible = true;
   _enabled = false;
   _cs = {
-      .bg = ILI9341_BLACK,
-      .fg = ILI9341_WHITE,
-      .active = ILI9341_DARKGREY,
-      .accent = ILI9341_RED
+      .bg = TFT_RGB(0, 0, 0),
+      .fg = TFT_RGB(255, 255, 255),
+      .active = TFT_RGB(64, 64, 64),
+      .accent = TFT_RGB(255, 0, 0)
     };
   _ts = {
       .font = fontWithHeight(22),

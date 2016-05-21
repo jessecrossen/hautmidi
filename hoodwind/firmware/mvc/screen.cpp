@@ -6,9 +6,7 @@
 #define BEGIN_TRANSACTION SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
 #define END_TRANSACTION SPI.endTransaction();
 
-Screen::Screen(ScreenPinout pinout) 
-    //!!!
-    : ILI9341_t3(21, 20, 255, 7, 14, 12) {
+Screen::Screen(ScreenPinout pinout) {
   _activated = false;
   // set up the default pinout
   _brightnessPin = 255;
@@ -28,6 +26,8 @@ Screen::Screen(ScreenPinout pinout)
   _brightness = 255;
   // rotation is indefinite when the screen is initialized
   _rotation = ScreenRotationUnknown;
+  _width = TFT_WIDTH;
+	_height = TFT_HEIGHT;
   // the screen should be awake when it starts up
   _isSleeping = false;
 }
@@ -64,16 +64,8 @@ void Screen::begin() {
   if (SPI.pinIsChipSelect(_csPin, _dcPin)) {
     _dataFlags = SPI.setCS(_csPin);
 	  _commandFlags = _dataFlags | SPI.setCS(_dcPin);
-	  // !!!
-	  pcs_data = _dataFlags; 
-	  pcs_command = _commandFlags;
   }
-  else {
-    //!!!
-	  pcs_data = 0;
-	  pcs_command = 0;
-	  return;
-  }
+  else return;
   // send initialization commands
 	BEGIN_TRANSACTION
 	_command({ .cmd=0xEF, .argc=3, .argv={0x03, 0x80, 0x02}});
@@ -107,8 +99,8 @@ void Screen::begin() {
 	  .argv={0x00, 0x0E, 0x14, 0x03, 0x11, 0x07, 0x31, 0xC1, 
 		       0x48, 0x08, 0x0F, 0x0C, 0x31, 0x36, 0x0F}});
 	// wake the display
-	writecommand_cont(ILI9341_DISPON);
-	writecommand_last(ILI9341_SLPOUT);
+	_command({ .cmd=ILI9341_DISPON, .argc=0 });
+	_command({ .cmd=ILI9341_SLPOUT, .argc=0 }, true);
 	END_TRANSACTION
 }
 
@@ -131,30 +123,26 @@ void Screen::setRotation(ScreenRotation r) {
 	    case ScreenRotationUnknown:
 	    case ScreenRotationCableDown:
 		    _send((uint8_t)(MADCTL_MX | MADCTL_BGR), false, true);
-		    _width  = ILI9341_TFTWIDTH;
-		    _height = ILI9341_TFTHEIGHT;
+		    _width  = TFT_WIDTH;
+		    _height = TFT_HEIGHT;
 		    break;
 	    case ScreenRotationCableRight:
 		    _send((uint8_t)(MADCTL_MV | MADCTL_BGR), false, true);
-		    _width  = ILI9341_TFTHEIGHT;
-		    _height = ILI9341_TFTWIDTH;
+		    _width  = TFT_HEIGHT;
+		    _height = TFT_WIDTH;
 		    break;
 	    case ScreenRotationCableUp:
 		    _send((uint8_t)(MADCTL_MY | MADCTL_BGR), false, true);
-		    _width  = ILI9341_TFTWIDTH;
-		    _height = ILI9341_TFTHEIGHT;
+		    _width  = TFT_WIDTH;
+		    _height = TFT_HEIGHT;
 		    break;
 	    case ScreenRotationCableLeft:
 		    _send((uint8_t)(MADCTL_MX | MADCTL_MY | MADCTL_MV | MADCTL_BGR), false, true);
-		    _width  = ILI9341_TFTHEIGHT;
-		    _height = ILI9341_TFTWIDTH;
+		    _width  = TFT_HEIGHT;
+		    _height = TFT_WIDTH;
 		    break;
 	  }
 	  END_TRANSACTION
-	
-	  //!!!
-	  cursor_x = 0;
-	  cursor_y = 0;
   }
 }
 
@@ -170,15 +158,16 @@ void Screen::setSleeping(bool v) {
     sinceSleepChange = 0;
     _isSleeping = v;
     // turn the display off when sleeping
-    SPI.beginTransaction(SPISettings(SPICLOCK, MSBFIRST, SPI_MODE0));
+    BEGIN_TRANSACTION
     if (_isSleeping) {
-		  writecommand_cont(ILI9341_DISPOFF);
-		  writecommand_last(ILI9341_SLPIN);
-	  } else {
-		  writecommand_cont(ILI9341_DISPON);
-		  writecommand_last(ILI9341_SLPOUT);
+      _command({ .cmd=ILI9341_DISPOFF, .argc=0 });
+	    _command({ .cmd=ILI9341_SLPIN, .argc=0 }, true);
 	  }
-    SPI.endTransaction();
+	  else {
+	    _command({ .cmd=ILI9341_DISPON, .argc=0 });
+	    _command({ .cmd=ILI9341_SLPOUT, .argc=0 }, true);
+	  }
+    END_TRANSACTION
   }
 }
 
