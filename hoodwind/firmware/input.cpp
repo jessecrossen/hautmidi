@@ -10,6 +10,7 @@ typedef enum {
   L2,
   L3,
   L4,
+  Breath,
   Bite,
   HighRegister,
   LowRegister
@@ -41,8 +42,11 @@ InputModel::InputModel() : Model() {
   _calibrations[L2].pin = 26;
   _calibrations[L3].pin = 27;
   _calibrations[L4].pin = 28;
-  _calibrations[HighRegister].isTouch = true;
+  _calibrations[Bite].pin = 34;
+  _calibrations[LowRegister].pin = 0;
   _calibrations[LowRegister].isTouch = true;
+  _calibrations[HighRegister].pin = 1;
+  _calibrations[HighRegister].isTouch = true;
   // set all valid pins to input
   for (i = 0; i < InputCount; i++) {
     if (_calibrations[i].pin < 255) {
@@ -52,6 +56,9 @@ InputModel::InputModel() : Model() {
   // configure analog input
   analogReadResolution(12);
   analogReference(EXTERNAL);
+  // set up the breath sensor
+  _breathSensor = new BMP180();
+  _atmosphericPressure = 0.0;
 }
 
 bool InputModel::highRegister() { return(_highRegister); }
@@ -66,6 +73,14 @@ bool InputModel::lowRegister() { return(_lowRegister); }
 void InputModel::setLowRegister(bool v) {
   if (v != _lowRegister) {
     _lowRegister = v;
+    invalidate();
+  }
+}
+
+float InputModel::breath() { return(_breath); }
+void InputModel::setBreath(float v) {
+  if (v != _breath) {
+    _breath = v;
     invalidate();
   }
 }
@@ -128,12 +143,20 @@ void InputModel::setCalibrating(bool v) {
 void InputModel::read() {
   int i;
   float mapMin, mapMax;
+  // update the breath sensor
+  _breathSensor->update();
+  if ((_atmosphericPressure == 0.0) && (_breathSensor->pressure() > 0.0)) {
+    _atmosphericPressure = _breathSensor->pressure();
+  }
   // read all inputs
   Calibration *cal;
   for (i = 0; i < InputCount; i++) {
     cal = &(_calibrations[i]);
-    if (cal->pin == 255) continue;
-    if (cal->isTouch) cal->raw = touchRead(cal->pin);
+    if (i == Breath) {
+      cal->raw = (_breathSensor->pressure() - _atmosphericPressure) * 100.0;
+    }
+    else if (cal->pin == 255) continue;
+    else if (cal->isTouch) cal->raw = touchRead(cal->pin);
     else cal->raw = analogRead(cal->pin);
     // calibrate if needed
     if (_calibrating) {
@@ -162,9 +185,10 @@ void InputModel::read() {
   for (i = 0; i < InputKeyCount; i++) {
     _keys[i] = _calibrations[i].value;
   }
-  _bite = _calibrations[Bite].value;
+  _breath = _calibrations[Breath].value;
+  _bite = 1.0 - _calibrations[Bite].value;
   _highRegister = (_calibrations[HighRegister].value > 0.5);
-  _lowRegister = (_calibrations[LowRegister].value > 0.5);
+  _lowRegister = (_calibrations[LowRegister].value > 0.5);  
   invalidate();
 }
 

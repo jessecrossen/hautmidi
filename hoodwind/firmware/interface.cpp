@@ -179,6 +179,12 @@ InputDisplay::InputDisplay() : View() {
   _highRegisterButton->setTextScheme(smallText);
   _highRegisterButton->setEnabled(false);
   addChild(_highRegisterButton);
+  // add the breath slider
+  _breathSlider = new Slider("BREATH");
+  _breathSlider->setHeight(sliderHeight);
+  _breathSlider->setTextScheme(smallTextLeft);
+  _breathSlider->setEnabled(false);
+  _sliders->addChild(_breathSlider);
   // add the bite slider
   _biteSlider = new Slider("BITE");
   _biteSlider->setHeight(sliderHeight);
@@ -214,7 +220,7 @@ void InputDisplay::layout() {
   coord_t y = _r.y;
   coord_t w = _r.w / 2;
   coord_t h = _biteSlider->rect().h;
-  uint8_t sliderCount = InputKeyCount + 1;
+  uint8_t sliderCount = InputKeyCount + 2;
   _lowRegisterButton->setRect({ .x = x, .y = y, .w = w, .h = h });
   x += w;
   _highRegisterButton->setRect({ .x = x, .y = y, .w = w, .h = h });
@@ -228,6 +234,7 @@ void InputDisplay::layout() {
   for (i = 0; i < InputKeyCount; i++) {
     _keySliders[i]->setValue(_input->key(i));
   }
+  _breathSlider->setValue(_input->breath());
   _biteSlider->setValue(_input->bite());
   _highRegisterButton->setToggled(_input->highRegister());
   _lowRegisterButton->setToggled(_input->lowRegister());

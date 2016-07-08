@@ -2,9 +2,10 @@
 #define _HOODWIND_input_h_
 
 #include "mvc/model.h"
+#include "lib/BMP180.h"
 
 #define InputKeyCount 8
-#define InputCount (InputKeyCount + 3)
+#define InputCount (InputKeyCount + 4)
 
 #define InputCalibrationBytes (InputCount * 6)
 
@@ -29,6 +30,9 @@ class InputModel : public Model {
     void setHighRegister(bool v);
     bool lowRegister();
     void setLowRegister(bool v);
+    // get/set breath pressure
+    float breath();
+    void setBreath(float v);
     // get/set bite pressure
     float bite();
     void setBite(float v);
@@ -50,6 +54,10 @@ class InputModel : public Model {
     // whether the register toggles are on
     bool _highRegister;
     bool _lowRegister;
+    // the baseline atmospheric pressure
+    float _atmosphericPressure;
+    // the current breath pressure (0.0 to 1.0)
+    float _breath;
     // the current bite pressure (0.0 to 1.0)
     float _bite;
     // the current depression of each key
@@ -58,6 +66,8 @@ class InputModel : public Model {
     bool _calibrating;
     // calibrations for each input
     Calibration _calibrations[InputCount];
+    // breath sensor
+    BMP180 *_breathSensor;
 };
 
 #endif

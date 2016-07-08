@@ -358,8 +358,8 @@ void Button::_drawBackScan(Screen *s, coord_t y, coord_t w) {
     return;
   }
   // draw the button area
-  color_t bg = _cs.bg;
-  if (_enabled) bg = (_toggled || _touched) ? _cs.accent : _cs.active;
+  color_t bg = _enabled ? _cs.active : _cs.bg;
+  if (_toggled) bg = _cs.accent;
   s->fillScanBuffer(1, w - 2, bg);
   // draw blank edges at left and right
   s->scanBuffer[0] = _cs.bg;

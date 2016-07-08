@@ -46,6 +46,7 @@ class InputDisplay : public View, public ButtonAction {
     Button *_calibrateButton;
     Button *_highRegisterButton;
     Button *_lowRegisterButton;
+    Slider *_breathSlider;
     Slider *_biteSlider;
     Slider *_keySliders[InputKeyCount];
 };
