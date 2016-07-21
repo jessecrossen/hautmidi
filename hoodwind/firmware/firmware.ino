@@ -7,10 +7,8 @@ Instrument *instrument;
 
 void setup() {
   Serial.begin(38400);
-/*  #if DEBUG*/
-/*    while ((! Serial) && (elapsedMillis() < 1000));*/
-/*  #endif*/
-/*  LOG("READY");*/
+  
+  delay(100);
 
   instrument = Instrument::instance();
   instrument->update();

@@ -9,6 +9,9 @@
 
 #define InputCalibrationBytes (InputCount * 6)
 
+// the time to wait between readings
+#define READ_INTERVAL 25 // milliseconds
+
 // a calibration for a specific input pin
 typedef struct {
   uint8_t pin; // the pin to read input from
@@ -19,6 +22,8 @@ typedef struct {
   bool valid; // whether the initial calibration values have been set
   bool isTouch; // whether the input should be read as a capacitive touch
   float value; // the calibrated and scaled value of the input
+  float lowFence; // fraction of the input range to ignore below
+  float highFence; // fraction of the input range to ignore above
 } Calibration;
 
 class InputModel : public Model {
@@ -43,14 +48,16 @@ class InputModel : public Model {
     // enable/disable calibration mode
     bool calibrating();
     void setCalibrating(bool v);
-    // read input from the device
-    void read();
+    // read input from the device and return whether a read cycle was completed
+    bool read();
     // persist calibration
     virtual uint8_t storageBytes();
     virtual void store(uint8_t *buffer);
     virtual void recall(uint8_t *buffer);
     
   private:
+    // the time the last read operation was started
+    elapsedMillis sinceLastRead;
     // whether the register toggles are on
     bool _highRegister;
     bool _lowRegister;

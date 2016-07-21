@@ -64,7 +64,7 @@ void Controller::draw(Screen *s) {
 void Controller::update() {
   // see if enough time has ellapsed for a new frame
   if (sinceLastUpdate < FRAME_INTERVAL) return;
-  sinceLastUpdate = sinceLastUpdate - FRAME_INTERVAL;
+  sinceLastUpdate = 0;
   // check for touches
   if (_touch->touched()) {
     sinceLastTouch = 0;

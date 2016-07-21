@@ -32,6 +32,8 @@ InputModel::InputModel() : Model() {
     _calibrations[i].min = _calibrations[i].first = _calibrations[i].max = 0;
     _calibrations[i].raw = 0;
     _calibrations[i].value = 0.0;
+    _calibrations[i].lowFence = 0.05;
+    _calibrations[i].highFence = 0.95;
   }
   // configure the pinout
   _calibrations[R1].pin = 37;
@@ -47,6 +49,11 @@ InputModel::InputModel() : Model() {
   _calibrations[LowRegister].isTouch = true;
   _calibrations[HighRegister].pin = 1;
   _calibrations[HighRegister].isTouch = true;
+  // add a bit of extra fence on the bottom of the keys
+  for (i = R1; i <= L4; i++) {
+    _calibrations[i].lowFence = 0.08;
+    _calibrations[i].highFence = 0.92;
+  }
   // set all valid pins to input
   for (i = 0; i < InputCount; i++) {
     if (_calibrations[i].pin < 255) {
@@ -58,7 +65,10 @@ InputModel::InputModel() : Model() {
   analogReference(EXTERNAL);
   // set up the breath sensor
   _breathSensor = new BMP180();
+  _breathSensor->oversample = PressureOversampleHighRes;
   _atmosphericPressure = 0.0;
+  // reset the update timer
+  sinceLastRead = 0;
 }
 
 bool InputModel::highRegister() { return(_highRegister); }
@@ -140,7 +150,10 @@ void InputModel::setCalibrating(bool v) {
   }
 }
 
-void InputModel::read() {
+bool InputModel::read() {
+  // check time since last update
+  if (sinceLastRead < READ_INTERVAL) return(false);
+  sinceLastRead = 0;
   int i;
   float mapMin, mapMax;
   // update the breath sensor
@@ -153,7 +166,8 @@ void InputModel::read() {
   for (i = 0; i < InputCount; i++) {
     cal = &(_calibrations[i]);
     if (i == Breath) {
-      cal->raw = (_breathSensor->pressure() - _atmosphericPressure) * 100.0;
+      if (_breathSensor->pressure() <= _atmosphericPressure) cal->raw = 0;
+      else cal->raw = (_breathSensor->pressure() - _atmosphericPressure) * 100.0;
     }
     else if (cal->pin == 255) continue;
     else if (cal->isTouch) cal->raw = touchRead(cal->pin);
@@ -173,11 +187,19 @@ void InputModel::read() {
         }
       }
     }
-    // map to a float
-    mapMin = (float)(cal->isTouch ? cal->min : cal->first);
-    mapMax = (float)cal->max;
-    if (mapMax == mapMin) cal->value = 0.0; // divide-by-zero protection
-    else cal->value = ((float)cal->raw - mapMin) / (mapMax - mapMin);
+    // handle touch
+    if (cal->isTouch) {
+      cal->value = cal->raw > (2 * cal->min) ? 1.0 : 0.0;
+    }
+    else {
+      // map to a float
+      mapMin = (float)(cal->isTouch ? cal->min : cal->first);
+      mapMax = (float)cal->max;
+      if (mapMax == mapMin) cal->value = 0.0; // divide-by-zero protection
+      else cal->value = ((float)cal->raw - mapMin) / (mapMax - mapMin);
+      // ignore the extreme upper and lower parts of the input range
+      cal->value = (cal->value - cal->lowFence) / (cal->highFence - cal->lowFence);
+    }
     if (! (cal->value >= 0.0)) cal->value = 0.0;
     if (! (cal->value <= 1.0)) cal->value = 1.0;
   }
@@ -187,9 +209,11 @@ void InputModel::read() {
   }
   _breath = _calibrations[Breath].value;
   _bite = 1.0 - _calibrations[Bite].value;
-  _highRegister = (_calibrations[HighRegister].value > 0.5);
-  _lowRegister = (_calibrations[LowRegister].value > 0.5);  
+  _highRegister = (_calibrations[HighRegister].value >= 0.2);
+  _lowRegister = (_calibrations[LowRegister].value >= 0.2);  
   invalidate();
+  // we've completed a read
+  return(true);
 }
 
 uint8_t InputModel::storageBytes() {
