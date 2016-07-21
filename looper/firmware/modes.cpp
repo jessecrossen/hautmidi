@@ -1,5 +1,11 @@
 #include "modes.h"
 
+#include <string.h>
+
+// the maximum number of milliseconds of holding down a switch 
+//  that qualifies as a tap as opposed to a hold
+#define TAP_MILLISECONDS 500
+
 // GENERIC ********************************************************************
 
 // get/set the value
@@ -50,6 +56,17 @@ void Mode::onDeactivate() { }
 
 // LOOP SELECT ****************************************************************
 
+void LoopSelectMode::_initTracks(int loopIndex) {
+  char path[64];
+  // make sure the parent directory exists
+  sprintf(path, "/%02d", loopIndex);
+  SD.mkdir(path);
+  for (int i = 0; i < TRACK_COUNT; i++) {
+    sprintf(path, "/%02d/%d", loopIndex, i);
+    _tracks[i]->setPath(path);
+  }
+}
+
 int LoopSelectMode::clamp(int value) {
   if (value < 0) value = 0;
   if (value > 99) value = 99;
@@ -57,34 +74,54 @@ int LoopSelectMode::clamp(int value) {
 }
 
 void LoopSelectMode::onChange() {
-  // TODO
+  // initialize tracks for the new loop index
+  _initTracks(read());
 }
 
 void LoopSelectMode::display(LiquidCrystal *lcd) {
+  int i;
   lcd->setCursor(0, 0);
   lcd->print("LOOP ");
   int v = read();
   if (v < 10) lcd->print("0");
   lcd->print(v);
   lcd->print("         ");
-  // TODO
+  // display track state
   lcd->setCursor(0, 1);
-  lcd->print("                ");
+  for (i = 0; i < TRACK_COUNT; i++) {
+    switch (_tracks[i]->state()) {
+      case (Paused):
+        lcd->print("\x05");
+        break;
+      case (Playing):
+        lcd->print("\x04");
+        break;
+      case (MaybeRecording):
+        lcd->print("*");
+        break;
+      case (Recording):
+        lcd->print("\x03");
+        break;
+      default:
+        lcd->print("?");
+    }
+    if (i + 1 < TRACK_COUNT) lcd->print("    ");
+  }
 }
 
 // SOURCE *********************************************************************
 
 int SourceMode::write(int value) {
-  InputSource oldSource = _input->source();
+  InputSource oldSource = _audio->source();
   if (value < 0) {
     value = 0;
-    _input->setSource(InputSourceLine);
+    _audio->setSource(InputSourceLine);
   }
   if (value > 1) {
     value = 1;
-    _input->setSource(InputSourceMic);
+    _audio->setSource(InputSourceMic);
   }
-  InputSource newSource = _input->source();
+  InputSource newSource = _audio->source();
   if (newSource != oldSource) {
     invalidate();
     onChange();
@@ -92,11 +129,11 @@ int SourceMode::write(int value) {
   return(newSource);
 }
 int SourceMode::read() {
-  return(_input->source() == InputSourceLine ? 0 : 1);
+  return(_audio->source() == InputSourceLine ? 0 : 1);
 }
 
 void SourceMode::update(LiquidCrystal *lcd) {
-  _input->update();
+  _audio->update();
   if ((! _valid) || (_sinceLastUpdate >= 100)) {
     display(lcd);
     _valid = true;
@@ -110,7 +147,7 @@ void SourceMode::display(LiquidCrystal *lcd) {
   else lcd->print("SOURCE: MIC    ");
   // show the recent peak level
   lcd->setCursor(0, 1);
-  float px = _input->peak() * 16.0;
+  float px = _audio->peak() * 16.0;
   float delta;
   for (int x = 1; x <= 16; x++) {
     delta = (float)x - px;
@@ -124,7 +161,7 @@ void SourceMode::display(LiquidCrystal *lcd) {
 
 int LineGainMode::write(int value) {
   int oldLevel = read();
-  _input->setLineLevel(value);
+  _audio->setLineLevel(value);
   int newLevel = read();
   if (newLevel != oldLevel) {
     invalidate();
@@ -133,12 +170,12 @@ int LineGainMode::write(int value) {
   return(newLevel);
 }
 int LineGainMode::read() {
-  return(_input->lineLevel());
+  return(_audio->lineLevel());
 }
 
 int MicGainMode::write(int value) {
   int oldLevel = read();
-  _input->setMicLevel(value);
+  _audio->setMicLevel(value);
   int newLevel = read();
   if (newLevel != oldLevel) {
     invalidate();
@@ -147,7 +184,7 @@ int MicGainMode::write(int value) {
   return(newLevel);
 }
 int MicGainMode::read() {
-  return(_input->micLevel());
+  return(_audio->micLevel());
 }
 
 void LineGainMode::display(LiquidCrystal *lcd) {
@@ -162,7 +199,7 @@ void LineGainMode::display(LiquidCrystal *lcd) {
   for (int i = strlen(label) + 4; i < 16; i++) { lcd->print(" "); }
   // show the recent peak level
   lcd->setCursor(0, 1);
-  float px = _input->peak() * 16.0;
+  float px = _audio->peak() * 16.0;
   float delta;
   for (int x = 1; x <= 16; x++) {
     delta = (float)x - px;
@@ -173,16 +210,16 @@ void LineGainMode::display(LiquidCrystal *lcd) {
 }
 
 void LineGainMode::onActivate() {
-  _oldSource = _input->source();
-  _input->setSource(getSource());
+  _oldSource = _audio->source();
+  _audio->setSource(getSource());
 }
 
 void LineGainMode::onDeactivate() {
-  _input->setSource(_oldSource);
+  _audio->setSource(_oldSource);
 }
 
 void LineGainMode::update(LiquidCrystal *lcd) {
-  _input->update();
+  _audio->update();
   if ((! _valid) || (_sinceLastUpdate >= 100)) {
     display(lcd);
     _valid = true;
@@ -192,25 +229,46 @@ void LineGainMode::update(LiquidCrystal *lcd) {
 
 // INTERFACE ******************************************************************
 
-Interface::Interface(LiquidCrystal *lcd, Encoder *rotary, Bounce *button) {
+Interface::Interface(LiquidCrystal *lcd, Encoder *rotary, Bounce *button, 
+                      Bounce **switches) {
+  _modeCount = 0;
+  // set up the screen
   _lcd = lcd;
   _lcd->begin(16, 2);
   _createChars();
   _loadScreen();
+  // bind variables
   _rotary = rotary;
   _button = button;
-  _input = new Input();
+  _switches = switches;
+  _audio = new AudioDevice();
+  _tracks = new Track*[TRACK_COUNT];
+  for (int i = 0; i < TRACK_COUNT; i++) {
+    _tracks[i] = new Track(_audio);
+  }
+  // start the SD card
+  if (! SD.begin(10)) {
+    _failScreen("SD CARD INIT");
+    return;
+  }
+  // set up the interface
   _modeCount = 4;
   _modes = new Mode*[_modeCount];
-  _modes[0] = new LoopSelectMode();
-  _modes[1] = new SourceMode(_input);
-  _modes[2] = new LineGainMode(_input);
-  _modes[3] = new MicGainMode(_input);
+  _mainScreen = new LoopSelectMode(_tracks);
+  _modes[0] = _mainScreen;
+  _modes[1] = new SourceMode(_audio);
+  _modes[2] = new LineGainMode(_audio);
+  _modes[3] = new MicGainMode(_audio);
   _modeIndex = 0;
   _modes[_modeIndex]->setActive(true);
 }
 
 void Interface::update() {
+  int i;
+
+  // TODO: max one track at a time recording
+  // TODO: figure out why updateCache calls are too slow when recording
+
   // switch modes when the button is pressed
   if ((_button->update()) && (_button->fallingEdge())) {
     setModeIndex(_modeIndex + 1);
@@ -222,6 +280,44 @@ void Interface::update() {
     if (cv != v) _rotary->write(cv * 4);
   }
   _modes[_modeIndex]->update(_lcd);
+  // update caches for all tracks
+  for (i = 0; i < TRACK_COUNT; i++) {
+    _tracks[i]->updateCaches();
+  }
+  // update track state from foot switches
+  for (i = 0; i < TRACK_COUNT; i++) {
+    if (_tracks[i] == NULL) continue;
+    TrackState oldState = _tracks[i]->state();
+    TrackState newState = oldState;
+    if (_switches[i]->update()) {  
+      // when the switch is depressed, we're either beginning 
+      //  recording on the track (if it's held down) or toggling playback,
+      //  but we won't know for a bit which it's going be
+      if (_switches[i]->fallingEdge()) {
+        newState = MaybeRecording;
+      }
+      // when the switch is released, we're either toggling playback or 
+      //  stopping recording depending on how much time has passed
+      else if (_switches[i]->risingEdge()) {
+        // a short press means toggle the playback state
+        if (_tracks[i]->sinceStateChange() <= TAP_MILLISECONDS) {
+          _tracks[i]->setIsActive(! _tracks[i]->isActive());
+          newState = _tracks[i]->isActive() ? Playing : Paused;
+        }
+        // a long press means stop recording and enter playback mode
+        else {
+          _tracks[i]->setIsActive(true);
+          newState = Playing;
+        }
+      }
+    }
+    else if ((oldState == MaybeRecording) && 
+             (_tracks[i]->sinceStateChange() > TAP_MILLISECONDS)) {
+      newState = Recording;
+    }
+    _tracks[i]->setState(newState);
+    if (newState != oldState) _mainScreen->invalidate();
+  }
 }
 
 int Interface::setModeIndex(int index) {
@@ -241,7 +337,16 @@ void Interface::_loadScreen() {
   _lcd->print("       \xCE\xCC\xDF      ");
   _lcd->setCursor(0, 1);
   _lcd->print("       \x06\x06       ");
-  delay(500);
+}
+
+void Interface::_failScreen(const char *message) {
+  _lcd->setCursor(0, 0);
+  _lcd->print("     FAILED     ");
+  _lcd->setCursor(0, 1);
+  _lcd->print("                ");
+  int pad = (16 - strlen(message)) / 2;
+  _lcd->setCursor(pad, 1);
+  _lcd->print(message);
 }
 
 void Interface::_createChars() {

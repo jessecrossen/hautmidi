@@ -4,8 +4,12 @@
 #include <LiquidCrystal.h>
 #include <Encoder.h>
 #include <Bounce.h>
+#include <SD_t3.h>
 
 #include "audio.h"
+#include "track.h"
+
+#define TRACK_COUNT 4
 
 class Mode {
   public:
@@ -34,17 +38,25 @@ class Mode {
 };
 
 class LoopSelectMode : public Mode {
+  public:
+    LoopSelectMode(Track **tracks) : Mode() {
+      _tracks = tracks;
+      _initTracks(0);
+    }
   protected:
     virtual int clamp(int value);
     virtual void display(LiquidCrystal *lcd);
     virtual void onChange();
+  private:
+    void _initTracks(int loopIndex);
+    Track **_tracks;
 };
 
 class SourceMode : public Mode {
   public:
-    SourceMode(Input *input) : Mode() {
-      _input = input;
-      _input->setSource(InputSourceLine);
+    SourceMode(AudioDevice *audio) : Mode() {
+      _audio = audio;
+      _audio->setSource(InputSourceLine);
     };
     virtual int read();
     virtual int write(int value);
@@ -52,14 +64,14 @@ class SourceMode : public Mode {
   protected:
     virtual void display(LiquidCrystal *lcd);
     
-    Input *_input;
+    AudioDevice *_audio;
     elapsedMillis _sinceLastUpdate;
 };
 
 class LineGainMode : public Mode {
   public:
-    LineGainMode(Input *input) : Mode() {
-      _input = input;
+    LineGainMode(AudioDevice *audio) : Mode() {
+      _audio = audio;
     };
     virtual int read();
     virtual int write(int value);
@@ -72,14 +84,14 @@ class LineGainMode : public Mode {
     virtual InputSource getSource() { return(InputSourceLine); }
     virtual const char *getLabel() { return("LINE LEVEL: "); };
 
-    Input *_input;
+    AudioDevice *_audio;
     InputSource _oldSource;
     elapsedMillis _sinceLastUpdate;
 };
 
 class MicGainMode : public LineGainMode {
   public:
-    MicGainMode(Input *input) : LineGainMode(input) { };
+    MicGainMode(AudioDevice *audio) : LineGainMode(audio) { };
     virtual int read();
     virtual int write(int value);
   protected:
@@ -90,17 +102,23 @@ class MicGainMode : public LineGainMode {
 
 class Interface {
   public:
-    Interface(LiquidCrystal *lcd, Encoder *rotary, Bounce *button);
+    Interface(LiquidCrystal *lcd, 
+              Encoder *rotary, Bounce *button, 
+              Bounce **switches);
     void update();
     int setModeIndex(int index);
   private:
     void _createChars();
     void _loadScreen();
+    void _failScreen(const char *message);
     LiquidCrystal *_lcd;
     Encoder *_rotary;
     Bounce *_button;
-    Input *_input;
+    Bounce **_switches;
+    AudioDevice *_audio;
+    Track **_tracks;
     Mode **_modes;
+    LoopSelectMode *_mainScreen;
     int _modeCount;
     int _modeIndex;
 };

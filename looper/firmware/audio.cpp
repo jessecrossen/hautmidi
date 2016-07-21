@@ -1,9 +1,7 @@
 #include "audio.h"
 
-// INPUT **********************************************************************
-
-InputSource Input::source() { return(_source); }
-void Input::setSource(InputSource s) {
+InputSource AudioDevice::source() { return(_source); }
+void AudioDevice::setSource(InputSource s) {
   // never allow a transition to an undefined state
   if (s == InputSourceUndefined) return;
   if (s != _source) {
@@ -21,8 +19,8 @@ void Input::setSource(InputSource s) {
   }
 }
 
-int Input::micLevel() { return(_micLevel); }
-void Input::setMicLevel(int level) {
+int AudioDevice::micLevel() { return(_micLevel); }
+void AudioDevice::setMicLevel(int level) {
   if (level < 0) level = 0;
   if (level > 63) level = 63;
   if (level != _micLevel) {
@@ -31,8 +29,8 @@ void Input::setMicLevel(int level) {
   }
 }
 
-int Input::lineLevel() { return(_lineLevel); }
-void Input::setLineLevel(int level) {
+int AudioDevice::lineLevel() { return(_lineLevel); }
+void AudioDevice::setLineLevel(int level) {
   if (level < 0) level = 0;
   if (level > 15) level = 15;
   if (level != _lineLevel) {
@@ -41,7 +39,7 @@ void Input::setLineLevel(int level) {
   }
 }
 
-void Input::update() {
+void AudioDevice::update() {
   if (_peakAnalyzer->available()) {
     if (isnan(_integratedPeak)) _integratedPeak = 0.0;
     float newPeak = _peakAnalyzer->read();
@@ -49,7 +47,7 @@ void Input::update() {
   }
 }
 
-float Input::peak() {
+float AudioDevice::peak() {
   update();
   if (! isnan(_integratedPeak)) {
     _peak = _integratedPeak;

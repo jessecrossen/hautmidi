@@ -10,15 +10,16 @@ typedef enum {
   InputSourceUndefined
 } InputSource;
 
-class Input {
+class AudioDevice {
   public:
-    Input() {
-      AudioMemory(60);
+    AudioDevice() {
+      AudioMemory(80);
       _source = InputSourceUndefined;
-      _audioControl = new AudioControlSGTL5000;
-      _i2s = new AudioInputI2S;
-      _peakAnalyzer = new AudioAnalyzePeak;
-      _peakPatch = new AudioConnection(*_i2s, 1, *_peakAnalyzer, 0);
+      _audioControl = new AudioControlSGTL5000();
+      _input = new AudioInputI2S();
+      _output = new AudioOutputI2S();
+      _peakAnalyzer = new AudioAnalyzePeak();
+      _peakPatch = new AudioConnection(*_input, 1, *_peakAnalyzer, 0);
       _audioControl->enable();
       _micLevel = 32;
       _lineLevel = 5;
@@ -37,9 +38,13 @@ class Input {
     void update();
     // get the current peak level
     float peak();
+    // get the input and output streams
+    AudioStream *inputStream() { return(_input); }
+    AudioStream *outputStream() { return(_output); }
   private:
     AudioControlSGTL5000 *_audioControl;
-    AudioInputI2S *_i2s;
+    AudioInputI2S *_input;
+    AudioOutputI2S *_output;
     AudioAnalyzePeak *_peakAnalyzer;
     AudioConnection *_peakPatch;    
     InputSource _source;
