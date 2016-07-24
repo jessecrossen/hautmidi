@@ -33,11 +33,13 @@ class FileCache : protected AudioStream {
       _path = newPath;
     }
     bool isOpen() { return((bool)_file); }
+    size_t blocks() { return(_blocks); }
     virtual void update() { }
   protected:
     void reset() {
       if (_file) _file.close();
       _path = NULL;
+      _blocks = 0;
       _head = _tail = _size = 0;
       for (size_t i = 0; i < MAX_BUFFER_BLOCKS; i++) {
         if (_buffer[i] != NULL) {
@@ -52,6 +54,7 @@ class FileCache : protected AudioStream {
     size_t _head;
     size_t _tail;
     size_t _size;
+    size_t _blocks;
     audio_block_t * volatile _buffer[MAX_BUFFER_BLOCKS];
 };
 
@@ -84,11 +87,13 @@ class Track : public AudioStream {
       _isActive = false;
       _scratch = new RecordCache();
       _master = new PlayCache();
+      // set the time since last tap to a high value so the first tap
+      //  won't trigger a spurious erasure
+      sinceLastTap = 1000;
       // connect to the audio device
       _inputConnection = 
         new AudioConnection(*_audio->inputStream(), 1, *this, 0);
-      _outputConnection = 
-        new AudioConnection(*this, 0, *_audio->outputStream(), 1);
+      audio->mix(this, 0);
     }
     // get/set the track's storage path
     char *path() { return(_path); }
@@ -99,11 +104,17 @@ class Track : public AudioStream {
     bool isPlaying();
     bool isRecording();
     bool isOverdubbing();
-    // get the number of milliseconds since the last state change
-    unsigned int sinceStateChange() { return(_sinceStateChange); }
+    // the number of milliseconds since the last state change
+    elapsedMillis sinceStateChange;
+    // the number of milliseconds since the track's pedal was last tapped
+    elapsedMillis sinceLastTap;
     // get/set whether the track is active
     bool isActive() { return(_isActive); }
     void setIsActive(bool v) { _isActive = v; }
+    // erase the content on the track
+    void erase();
+    // return the length of the master track in blocks
+    size_t masterBlocks();
     
     // update track caches
     void updateCaches();
@@ -115,9 +126,7 @@ class Track : public AudioStream {
     TrackState _state;
     AudioDevice *_audio;
     AudioConnection *_inputConnection;
-    AudioConnection *_outputConnection;
     bool _isActive;
-    elapsedMillis _sinceStateChange;
     char _path[64];
     char _pathA[64];
     char _pathB[64];

@@ -5,6 +5,8 @@
 // the maximum number of milliseconds of holding down a switch 
 //  that qualifies as a tap as opposed to a hold
 #define TAP_MILLISECONDS 500
+// the maximum number of milliseconds between taps to count as a double tap
+#define DOUBLE_TAP_MILLISECONDS 500
 
 // GENERIC ********************************************************************
 
@@ -91,7 +93,12 @@ void LoopSelectMode::display(LiquidCrystal *lcd) {
   for (i = 0; i < TRACK_COUNT; i++) {
     switch (_tracks[i]->state()) {
       case (Paused):
-        lcd->print("\x05");
+        if (_tracks[i]->masterBlocks() == 0) {
+          lcd->print("-");
+        }
+        else {
+          lcd->print("\x05");
+        }
         break;
       case (Playing):
         lcd->print("\x04");
@@ -231,6 +238,7 @@ void LineGainMode::update(LiquidCrystal *lcd) {
 
 Interface::Interface(LiquidCrystal *lcd, Encoder *rotary, Bounce *button, 
                       Bounce **switches) {
+  int i;
   _modeCount = 0;
   // set up the screen
   _lcd = lcd;
@@ -243,7 +251,7 @@ Interface::Interface(LiquidCrystal *lcd, Encoder *rotary, Bounce *button,
   _switches = switches;
   _audio = new AudioDevice();
   _tracks = new Track*[TRACK_COUNT];
-  for (int i = 0; i < TRACK_COUNT; i++) {
+  for (i = 0; i < TRACK_COUNT; i++) {
     _tracks[i] = new Track(_audio);
   }
   // start the SD card
@@ -261,14 +269,15 @@ Interface::Interface(LiquidCrystal *lcd, Encoder *rotary, Bounce *button,
   _modes[3] = new MicGainMode(_audio);
   _modeIndex = 0;
   _modes[_modeIndex]->setActive(true);
+  // update all switches without responding so a transition from the initial 
+  //  state doesn't look like a tap
+  for (i = 0; i < TRACK_COUNT; i++) {
+    _switches[i]->update();
+  }
 }
 
 void Interface::update() {
   int i;
-
-  // TODO: max one track at a time recording
-  // TODO: figure out why updateCache calls are too slow when recording
-
   // switch modes when the button is pressed
   if ((_button->update()) && (_button->fallingEdge())) {
     setModeIndex(_modeIndex + 1);
@@ -284,25 +293,53 @@ void Interface::update() {
   for (i = 0; i < TRACK_COUNT; i++) {
     _tracks[i]->updateCaches();
   }
+  // count the number of tracks recording so we never have more than one
+  int tracksRecording = 0;
+  for (i = 0; i < TRACK_COUNT; i++) {
+    if (_tracks[i]->isRecording()) tracksRecording++;
+  }
   // update track state from foot switches
   for (i = 0; i < TRACK_COUNT; i++) {
     if (_tracks[i] == NULL) continue;
     TrackState oldState = _tracks[i]->state();
     TrackState newState = oldState;
-    if (_switches[i]->update()) {  
+    if (_switches[i]->update()) {
       // when the switch is depressed, we're either beginning 
       //  recording on the track (if it's held down) or toggling playback,
       //  but we won't know for a bit which it's going be
-      if (_switches[i]->fallingEdge()) {
-        newState = MaybeRecording;
+      if ((_switches[i]->fallingEdge())) {
+        //  ...however, if another track is recording already, we don't start 
+        //  recording because only one track is allowed to record at a time
+        if (tracksRecording > 0) {
+          // reset the state timer even though state is not actually changing,
+          //  because we want to treat this as a normal tap
+          _tracks[i]->sinceStateChange = 0;
+        }
+        else {
+          newState = MaybeRecording;
+        }
       }
       // when the switch is released, we're either toggling playback or 
-      //  stopping recording depending on how much time has passed
+      //  stopping recording depending on how much time has passed,
+      //  or erasing the track if we're close enough to the last tap time
       else if (_switches[i]->risingEdge()) {
         // a short press means toggle the playback state
-        if (_tracks[i]->sinceStateChange() <= TAP_MILLISECONDS) {
-          _tracks[i]->setIsActive(! _tracks[i]->isActive());
-          newState = _tracks[i]->isActive() ? Playing : Paused;
+        if (_tracks[i]->sinceStateChange <= TAP_MILLISECONDS) {
+          // check for a double-tap to erase
+          if (_tracks[i]->sinceLastTap <= DOUBLE_TAP_MILLISECONDS) {
+            _tracks[i]->erase();
+            _mainScreen->invalidate();
+            newState = Paused;
+          }
+          // handle a single tap
+          else {
+            bool setTrackActive = ! _tracks[i]->isActive();
+            // if the track is empty, don't allow it to play
+            if (_tracks[i]->masterBlocks() == 0) setTrackActive = false;
+            _tracks[i]->setIsActive(setTrackActive);
+            newState = _tracks[i]->isActive() ? Playing : Paused;
+          }
+          _tracks[i]->sinceLastTap = 0;
         }
         // a long press means stop recording and enter playback mode
         else {
@@ -312,7 +349,7 @@ void Interface::update() {
       }
     }
     else if ((oldState == MaybeRecording) && 
-             (_tracks[i]->sinceStateChange() > TAP_MILLISECONDS)) {
+             (_tracks[i]->sinceStateChange > TAP_MILLISECONDS)) {
       newState = Recording;
     }
     _tracks[i]->setState(newState);

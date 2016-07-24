@@ -19,6 +19,16 @@ void AudioDevice::setSource(InputSource s) {
   }
 }
 
+void AudioDevice::mix(AudioStream *stream, unsigned char channel) {
+  for (int i = 0; i < 4; i++) {
+    if (_mixerInputConnection[i] == NULL) {
+      _mixerInputConnection[i] = 
+        new AudioConnection(*stream, channel, *_mixer, i);
+      return;
+    }
+  }
+}
+
 int AudioDevice::micLevel() { return(_micLevel); }
 void AudioDevice::setMicLevel(int level) {
   if (level < 0) level = 0;

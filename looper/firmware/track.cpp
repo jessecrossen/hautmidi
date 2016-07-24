@@ -30,6 +30,8 @@ void Track::setPath(char *path) {
     _master->setPath(_pathA);
     _scratch->setPath(_pathB);
   }
+  // open the master file
+  _master->open();
   // pause and deactivate the track when its path changes
   setIsActive(false);
   setState(Paused);
@@ -39,31 +41,24 @@ void Track::setState(TrackState newState) {
   char *temp;
   TrackState oldState = _state;
   if (newState == oldState) return;
-  
-  Serial.println("****************");
-  Serial.print(oldState);
-  Serial.print(" => ");
-  Serial.println(newState);
-  Serial.println("****************");
-  
   bool wasRecording = isRecording();
   bool willBeRecording = (newState == MaybeRecording) || (newState == Recording);
   // open the scratch track before recording starts
   if ((willBeRecording) && (! wasRecording)) {
     _scratch->open();
+    _master->fillBuffer();
   }
   _state = newState;
-  _sinceStateChange = 0;
+  sinceStateChange = 0;
   // when the track is paused, stop processing audio
   active = (isPlaying() || isRecording());
-  // pre-cache the playback track if one exists
-  _master->fillBuffer();
   // when cancelled recording stops...
   if ((! isRecording()) && (oldState == MaybeRecording)) {
     // remove the scratch file when recording is cancelled
     temp = _scratch->path();
-    _scratch->setPath(temp);
+    _scratch->setPath(NULL);
 	  SD.remove(_scratch->path());
+	  _scratch->setPath(temp);
 	}
   // when true recording stops...
   else if ((! isRecording()) && (oldState == Recording)) {
@@ -79,9 +74,12 @@ void Track::setState(TrackState newState) {
 	  temp = _master->path();
 	  _master->setPath(_scratch->path());
 	  _scratch->setPath(temp);
-	  // remove the scratch file when it's been swapped to the master
+	  // remove the new scratch file (old master file)
 	  SD.remove(_scratch->path());
   }
+  // pre-cache the playback track if one exists
+  _master->open();
+  _master->fillBuffer();
 }
 bool Track::isPlaying() {
   return(((_state == Playing) || (isRecording())) && (_master));
@@ -93,6 +91,21 @@ bool Track::isOverdubbing() {
   return(isRecording() && isPlaying());
 }
 
+void Track::erase() {
+  setState(Paused);
+  _master->setPath(NULL);
+  _scratch->setPath(NULL);
+  if (SD.exists(_pathA)) SD.remove(_pathA);
+  if (SD.exists(_pathB)) SD.remove(_pathB);
+  _master->setPath(_pathA);
+  _scratch->setPath(_pathB);
+}
+
+size_t Track::masterBlocks() {
+  if (! _master->isOpen()) return(0);
+  return(_master->blocks());
+}
+
 void Track::updateCaches() {
   if ((_state != Paused) && (_master->isOpen())) _master->fillBuffer();
   if ((isRecording()) && (_scratch->isOpen())) _scratch->emptyBuffer();
@@ -100,9 +113,6 @@ void Track::updateCaches() {
 
 void Track::update() {
   if (_state == Paused) return;
-  
-  Serial.println(_state);
-  
   // playback and overdub
   audio_block_t *outBlock = NULL;
   if ((isPlaying()) && (_master->isOpen())) {
@@ -151,6 +161,7 @@ bool RecordCache::writeBlock(audio_block_t *block) {
   _tail++;
   _size++;
   if (_tail >= RECORD_BUFFER_BLOCKS) _tail = 0;
+  _blocks++;
   return(true);
 }
 
@@ -190,12 +201,14 @@ bool PlayCache::open() {
   if (_path == NULL) return(false);
   if (! _file) {
     _file = SD.open(_path, O_READ);
+    size_t bytes = _file ? _file.size() : 0;
     // guard against small files, which could cause a tight loop
-    if (_file.size() < AUDIO_BLOCK_BYTES) {
+    if (bytes < AUDIO_BLOCK_BYTES) {
       _file.close();
       SD.remove(_path);
       return(false);
     }
+    _blocks = bytes / AUDIO_BLOCK_BYTES;
   }
   if (! _file) return(false);
   return(true);
