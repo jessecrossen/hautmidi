@@ -8,6 +8,7 @@
 
 #include "audio.h"
 #include "track.h"
+#include "sync.h"
 
 #define TRACK_COUNT 4
 
@@ -39,8 +40,9 @@ class Mode {
 
 class LoopSelectMode : public Mode {
   public:
-    LoopSelectMode(Track **tracks) : Mode() {
+    LoopSelectMode(Track **tracks, Sync *sync) : Mode() {
       _tracks = tracks;
+      _sync = sync;
       _initTracks(0);
     }
   protected:
@@ -50,6 +52,7 @@ class LoopSelectMode : public Mode {
   private:
     void _initTracks(int loopIndex);
     Track **_tracks;
+    Sync *_sync;
 };
 
 class SourceMode : public Mode {
@@ -106,6 +109,8 @@ class Interface {
               Encoder *rotary, Bounce *button, 
               Bounce **switches);
     void update();
+    void save();
+    void load();
     int setModeIndex(int index);
   private:
     void _createChars();
@@ -118,9 +123,12 @@ class Interface {
     AudioDevice *_audio;
     Track **_tracks;
     Mode **_modes;
+    Sync *_sync;
     LoopSelectMode *_mainScreen;
     int _modeCount;
     int _modeIndex;
+    bool _needsSave;
+    elapsedMillis _sinceLastChange;
 };
 
 #endif

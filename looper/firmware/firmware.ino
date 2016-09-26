@@ -33,6 +33,8 @@ void setup() {
     new Encoder(2, 1),
     new Bounce(3, 10),
     switches);
+  // load stored interface state
+  interface->load();
 }
 
 void loop() {

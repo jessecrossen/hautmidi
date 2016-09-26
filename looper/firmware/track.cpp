@@ -50,10 +50,9 @@ void Track::setState(TrackState newState) {
   }
   _state = newState;
   sinceStateChange = 0;
-  // when the track is paused, stop processing audio
-  active = (isPlaying() || isRecording());
   // when cancelled recording stops...
   if ((! isRecording()) && (oldState == MaybeRecording)) {
+    _sync->cancelRecording(this);
     // remove the scratch file when recording is cancelled
     temp = _scratch->path();
     _scratch->setPath(NULL);
@@ -76,6 +75,11 @@ void Track::setState(TrackState newState) {
 	  _scratch->setPath(temp);
 	  // remove the new scratch file (old master file)
 	  SD.remove(_scratch->path());
+	  // commit the sync points for the new recording
+	  _sync->commitRecording(this);
+	  _master->open();
+	  // update the preroll in case the recording should not start immediately
+	  updatePreroll();
   }
   // pre-cache the playback track if one exists
   _master->open();
@@ -99,27 +103,57 @@ void Track::erase() {
   if (SD.exists(_pathB)) SD.remove(_pathB);
   _master->setPath(_pathA);
   _scratch->setPath(_pathB);
+  _sync->trackErased(this);
 }
 
 size_t Track::masterBlocks() {
   if (! _master->isOpen()) return(0);
   return(_master->blocks());
 }
+size_t Track::recordingBlock() {
+  if (! _scratch) return(0);
+  return(_scratch->block());
+}
+size_t Track::playingBlock() {
+  if (! _master) return(0);
+  return(_master->block());
+}
+size_t Track::playBlocks() {
+  if (! _master) return(0);
+  return(_master->playBlocks);
+}
 
 void Track::updateCaches() {
-  if ((_state != Paused) && (_master->isOpen())) _master->fillBuffer();
+  if (_master->isOpen()) _master->fillBuffer();
   if ((isRecording()) && (_scratch->isOpen())) _scratch->emptyBuffer();
 }
 
+void Track::updatePreroll() {
+  if (_master->isOpen()) {
+    _master->preroll = _sync->blocksUntilNextSyncPoint(this);
+  }
+}
+
 void Track::update() {
-  if (_state == Paused) return;
   // playback and overdub
   audio_block_t *outBlock = NULL;
-  if ((isPlaying()) && (_master->isOpen())) {
+  if (_master->isOpen()) {
+    size_t beginBlock = _master->block();
     outBlock = _master->readBlock();
+    // recompute the track's loop length once the first block is played
+    if ((beginBlock == 0) && (_master->block() != beginBlock)) {
+      _master->playBlocks = _sync->trackStarting(this);
+    }
+  }
+  // if we're not playing or recording, don't route anything to output
+  if ((! isPlaying()) && (! isRecording())) {
+    if (outBlock) release(outBlock);
+    return;
   }
   // record
   if ((_state == MaybeRecording) || (_state == Recording)) {
+    // mark when recording starts
+    if (_scratch->block() == 0) _sync->trackRecording(this);
     // get a block of input
     audio_block_t *inBlock = receiveReadOnly();
 	  // if we're overdubbing, mix the output block with the input
@@ -162,6 +196,7 @@ bool RecordCache::writeBlock(audio_block_t *block) {
   _size++;
   if (_tail >= RECORD_BUFFER_BLOCKS) _tail = 0;
   _blocks++;
+  _block++;
   return(true);
 }
 
@@ -209,18 +244,32 @@ bool PlayCache::open() {
       return(false);
     }
     _blocks = bytes / AUDIO_BLOCK_BYTES;
+    playBlocks = _blocks;
+    preroll = 0;
   }
   if (! _file) return(false);
   return(true);
 }
 
 audio_block_t *PlayCache::readBlock() {
+  // if we have no blocks, there's nothing to play
   if (_size == 0) return(NULL);
-  audio_block_t *block = _buffer[_head];
-  _buffer[_head] = NULL;
-  _head++;
-  _size--;
-  if (_head >= PLAY_BUFFER_BLOCKS) _head = 0;
+  // if we're still in the preroll, there's nothing to play
+  if (preroll > 0) {
+    preroll--;
+    return(NULL);
+  }
+  // if we're within the number of blocks available, we have something to play
+  audio_block_t *block = NULL;
+  if (_block < _blocks) {
+    block = _buffer[_head];
+    _buffer[_head] = NULL;
+    _head++;
+    _size--;
+    if (_head >= PLAY_BUFFER_BLOCKS) _head = 0;
+  }
+  // advance the block counter
+  _block = (_block + 1) % playBlocks;
   return(block);
 }
 
@@ -233,8 +282,17 @@ size_t PlayCache::readChunk() {
   static byte chunkBuffer[512];
   if (! open()) return(0);
   if (_size + 1 >= PLAY_BUFFER_BLOCKS) return(0);
+  // see if we need to re-seek to zero to sync to the current playback length
+  size_t blocksLeft = playBlocks - (_file.position() / AUDIO_BLOCK_BYTES);
+  size_t bytesToRead = 512;
+  if (blocksLeft <= 0) {
+    _file.seek(0);
+  }
+  else if (blocksLeft < (512 / AUDIO_BLOCK_BYTES)) {
+    bytesToRead = blocksLeft * AUDIO_BLOCK_BYTES;
+  }
   // read a chunk
-  size_t readBytes = _file.read(chunkBuffer, 512);
+  size_t readBytes = _file.read(chunkBuffer, bytesToRead);
   // if we reach the end of the loop, start at the beginning
   if (readBytes < 512) {
     _file.seek(0);

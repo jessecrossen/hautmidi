@@ -1,6 +1,7 @@
 #include "modes.h"
 
 #include <string.h>
+#include <EEPROM.h>
 
 // the maximum number of milliseconds of holding down a switch 
 //  that qualifies as a tap as opposed to a hold
@@ -59,13 +60,22 @@ void Mode::onDeactivate() { }
 // LOOP SELECT ****************************************************************
 
 void LoopSelectMode::_initTracks(int loopIndex) {
+  int i;
   char path[64];
   // make sure the parent directory exists
   sprintf(path, "/%02d", loopIndex);
   SD.mkdir(path);
-  for (int i = 0; i < TRACK_COUNT; i++) {
+  // set paths for all tracks
+  for (i = 0; i < TRACK_COUNT; i++) {
     sprintf(path, "/%02d/%d", loopIndex, i);
     _tracks[i]->setPath(path);
+  }
+  // set a path for the track sync points
+  sprintf(path, "/%02d/sync", loopIndex);
+  _sync->setPath(path);
+  // update preroll for all tracks
+  for (i = 0; i < TRACK_COUNT; i++) {
+    _tracks[i]->updatePreroll();
   }
 }
 
@@ -241,6 +251,7 @@ Interface::Interface(LiquidCrystal *lcd, Encoder *rotary, Bounce *button,
   int i;
   _modeCount = 0;
   // set up the screen
+  _needsSave = false;
   _lcd = lcd;
   _lcd->begin(16, 2);
   _createChars();
@@ -251,8 +262,9 @@ Interface::Interface(LiquidCrystal *lcd, Encoder *rotary, Bounce *button,
   _switches = switches;
   _audio = new AudioDevice();
   _tracks = new Track*[TRACK_COUNT];
+  _sync = new Sync(_tracks, TRACK_COUNT);
   for (i = 0; i < TRACK_COUNT; i++) {
-    _tracks[i] = new Track(_audio);
+    _tracks[i] = new Track(_audio, _sync);
   }
   // start the SD card
   if (! SD.begin(10)) {
@@ -262,7 +274,7 @@ Interface::Interface(LiquidCrystal *lcd, Encoder *rotary, Bounce *button,
   // set up the interface
   _modeCount = 4;
   _modes = new Mode*[_modeCount];
-  _mainScreen = new LoopSelectMode(_tracks);
+  _mainScreen = new LoopSelectMode(_tracks, _sync);
   _modes[0] = _mainScreen;
   _modes[1] = new SourceMode(_audio);
   _modes[2] = new LineGainMode(_audio);
@@ -276,6 +288,41 @@ Interface::Interface(LiquidCrystal *lcd, Encoder *rotary, Bounce *button,
   }
 }
 
+void Interface::load() {
+  size_t i, j;
+  // if the header doesn't match the number of modes, 
+  //  treat stored data as invalid
+  int b = 0;
+  if (EEPROM.read(b++) != _modeCount) return;
+  // read the value of each mode
+  byte buffer[sizeof(int)];
+  int *v = (int *)buffer;
+  for (i = 0; i < (size_t)_modeCount; i++) {
+    for (j = 0; j < sizeof(int); j++) {
+      buffer[j] = EEPROM.read(b++);
+    }
+    _modes[i]->write(*v);
+    if (i == (size_t)_modeIndex) _rotary->write(_modes[i]->read() * 4);
+  }
+}
+
+void Interface::save() {
+  size_t i, j;
+  // write a header bytes showing how many modes are stored
+  int b = 0;
+  EEPROM.write(b++, _modeCount);
+  // store the value of each mode
+  byte buffer[sizeof(int)];
+  int *v = (int *)buffer;
+  for (i = 0; i < (size_t)_modeCount; i++) {
+    *v = _modes[i]->read();
+    for (j = 0; j < sizeof(int); j++) {
+      EEPROM.write(b++, buffer[j]);
+    }
+  }
+  _needsSave = false;
+}
+
 void Interface::update() {
   int i;
   // switch modes when the button is pressed
@@ -283,15 +330,24 @@ void Interface::update() {
     setModeIndex(_modeIndex + 1);
   }
   // update the mode's value when the rotary encoder turns
-  int v = (int)floor(_rotary->read() / 4);
-  if (v != _modes[_modeIndex]->read()) {
-    int cv = _modes[_modeIndex]->write(v);
-    if (cv != v) _rotary->write(cv * 4);
+  int rv = (int)floor(_rotary->read() / 4);
+  int mv = _modes[_modeIndex]->read();
+  if (rv != mv) {
+    int wv = _modes[_modeIndex]->write(rv);
+    if (wv != rv) _rotary->write(wv * 4);
+    if (wv != mv) {
+      _needsSave = true;
+      _sinceLastChange = 0;
+    }
   }
   _modes[_modeIndex]->update(_lcd);
   // update caches for all tracks
   for (i = 0; i < TRACK_COUNT; i++) {
     _tracks[i]->updateCaches();
+  }
+  // see if we need to save settings
+  if ((_needsSave) && (_sinceLastChange >= 2000)) {
+    save();
   }
   // count the number of tracks recording so we never have more than one
   int tracksRecording = 0;

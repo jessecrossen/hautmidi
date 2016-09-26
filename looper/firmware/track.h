@@ -5,11 +5,15 @@
 #include <SD.h>
 
 #include "audio.h"
+#include "sync.h"
 
 #define AUDIO_BLOCK_BYTES (AUDIO_BLOCK_SAMPLES * sizeof(int16_t))
 #define RECORD_BUFFER_BLOCKS 50
 #define PLAY_BUFFER_BLOCKS 4
 #define MAX_BUFFER_BLOCKS RECORD_BUFFER_BLOCKS
+
+// forward declaration for circular references
+class Sync;
 
 typedef enum {
   Paused,
@@ -34,12 +38,14 @@ class FileCache : protected AudioStream {
     }
     bool isOpen() { return((bool)_file); }
     size_t blocks() { return(_blocks); }
+    size_t block() { return(_block); }
     virtual void update() { }
   protected:
     void reset() {
       if (_file) _file.close();
       _path = NULL;
       _blocks = 0;
+      _block = 0;
       _head = _tail = _size = 0;
       for (size_t i = 0; i < MAX_BUFFER_BLOCKS; i++) {
         if (_buffer[i] != NULL) {
@@ -55,6 +61,7 @@ class FileCache : protected AudioStream {
     size_t _tail;
     size_t _size;
     size_t _blocks;
+    size_t _block;
     audio_block_t * volatile _buffer[MAX_BUFFER_BLOCKS];
 };
 
@@ -73,15 +80,18 @@ class PlayCache : public FileCache {
     bool open();
     audio_block_t *readBlock();
     void fillBuffer();
+    size_t playBlocks;
+    size_t preroll;
   private:
     size_t readChunk();
 };
 
 class Track : public AudioStream {
   public:
-    Track(AudioDevice *audio) 
+    Track(AudioDevice *audio, Sync *sync) 
           : AudioStream(1, _inputQueueArray) {
       _audio = audio;
+      _sync = sync;
       _path[0] = _pathA[0] = _pathB[0] = '\0';
       _state = Paused;
       _isActive = false;
@@ -115,9 +125,16 @@ class Track : public AudioStream {
     void erase();
     // return the length of the master track in blocks
     size_t masterBlocks();
+    // return the indices of the current record/playback blocks
+    size_t playingBlock();
+    size_t recordingBlock();
+    // return the number of blocks to play in the current loop
+    size_t playBlocks();
     
     // update track caches
     void updateCaches();
+    // set the track preroll before playback starts
+    void updatePreroll();
     
     // handle audio streams into and out of the track
     virtual void update();
@@ -133,6 +150,8 @@ class Track : public AudioStream {
     PlayCache *_master;
     RecordCache *_scratch;
     audio_block_t *_inputQueueArray[1];
+    // a synchronizer for keeping tracks in sync
+    Sync *_sync;
 };
 
 #endif
