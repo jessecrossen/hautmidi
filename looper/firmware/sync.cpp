@@ -8,11 +8,52 @@ uint8_t Sync::_getTrackIndex(Track *track) {
   return(0);
 }
 
-size_t Sync::blocksUntilNextSyncPoint(Track *track) {
+size_t Sync::idealLoopBlocks(Track *track) {
+  SyncPoint *p;
+  uint8_t ti;
+  uint8_t i = _getTrackIndex(track);
+  // count sync points to the track for each other track
+  size_t *counts = new size_t[_trackCount];
+  for (ti = 0; ti < _trackCount; ti++) counts[ti] = 0;
+  for (p = _head; p; p = p->next) {
+    if ((p->target != i) || (p->isProvisional) || 
+        (p->source >= _trackCount)) continue;
+    counts[p->source]++;
+  }
+  // for all tracks with more than one reference to this one, 
+  //  see if we can loop at an even multiple of the source track's length
+  size_t idealBlocks = track->masterBlocks();
+  size_t bestLength = 0;
+  size_t leastError = 0;
+  size_t unit, count, multiple, target, error, maxError;
+  for (ti = 0; ti < _trackCount; ti++) {
+    count = counts[ti];
+    if (count < 2) continue;
+    unit = _tracks[ti]->masterBlocks();
+    maxError = unit / 4;
+    for (multiple = count - 1; multiple <= count + 1; multiple++) {
+      target = unit * multiple;
+      error = (idealBlocks > target) ? 
+                (idealBlocks - target) : (target - idealBlocks);
+      if (error > maxError) continue;
+      if ((bestLength == 0) || (error < leastError)) {
+        leastError = error;
+        bestLength = target;
+      }
+    }
+  }
+  // clean up dynamically allocated memory
+  delete[] counts;
+  // if no acceptable match was found, return the track's natural length
+  if (bestLength == 0) return(idealBlocks);
+  // otherwise return our best match
+  return(bestLength);
+}
+
+size_t Sync::blocksUntilNextSyncPoint(Track *track, size_t idealBlocks) {
   SyncPoint *p;
   uint8_t i = _getTrackIndex(track);
   // examine all sync points where this track could start its next loop
-  size_t idealBlocks = track->masterBlocks();
   size_t minBlocks = idealBlocks / 4;
   if (minBlocks < 4) minBlocks = 4;
   size_t blocksUntil, targetBlock, targetRepeat;
@@ -54,14 +95,10 @@ size_t Sync::trackStarting(Track *track) {
       _addPoint(p);
     }
   }
-  size_t bestLength = blocksUntilNextSyncPoint(track);
-  
-  Serial.print(si);
-  Serial.print(" ");
-  Serial.println(bestLength);
-  
+  size_t idealBlocks = idealLoopBlocks(track);
+  size_t bestLength = blocksUntilNextSyncPoint(track, idealBlocks);
   // if we found no matching sync point, just repeat at the natural length
-  if (bestLength == 0) return(track->masterBlocks());
+  if (bestLength == 0) return(idealBlocks);
   // otherwise return our best match
   return(bestLength);
 }

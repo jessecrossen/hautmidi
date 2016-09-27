@@ -31,9 +31,11 @@ class Sync {
       _tracks = tracks;
       _trackCount = trackCount;
     }
+    // get the ideal number of blocks that should be played for a track
+    size_t idealLoopBlocks(Track *track);
     // get the number of blocks until the track's next sync point, 
     //  or zero if no other track provides one within its next loop
-    size_t blocksUntilNextSyncPoint(Track *track);
+    size_t blocksUntilNextSyncPoint(Track *track, size_t idealBlocks);
     // register that a track is beginning playback and return the number of 
     //  blocks it should advance before looping
     size_t trackStarting(Track *track);
@@ -58,7 +60,7 @@ class Sync {
     char _path[64];
 
     uint8_t _getTrackIndex(Track *track);
-
+    
     void _addPoint(SyncPoint *p);
     SyncPoint *_removePoint(SyncPoint *p);
     void _removeAllPoints();

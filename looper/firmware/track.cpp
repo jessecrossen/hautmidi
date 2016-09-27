@@ -130,7 +130,7 @@ void Track::updateCaches() {
 
 void Track::updatePreroll() {
   if (_master->isOpen()) {
-    _master->preroll = _sync->blocksUntilNextSyncPoint(this);
+    _master->preroll = _sync->blocksUntilNextSyncPoint(this, masterBlocks());
   }
 }
 
@@ -267,6 +267,17 @@ audio_block_t *PlayCache::readBlock() {
     _head++;
     _size--;
     if (_head >= PLAY_BUFFER_BLOCKS) _head = 0;
+    // fade in/out to avoid clicking at the ends of the loop
+    if ((_block == 0) || (_block == playBlocks - 1)) {
+      int16_t *sample = (_block == 0) ? 
+        block->data : (block->data + AUDIO_BLOCK_SAMPLES - 1);
+      int step = (_block == 0) ? 1 : -1;
+      int32_t count = 32;
+      for (int32_t i = 0; i < count; i++) {
+        *sample = (int16_t)(((int32_t)(*sample) * i) / count);
+        sample += step;
+      }
+    }
   }
   // advance the block counter
   _block = (_block + 1) % playBlocks;
