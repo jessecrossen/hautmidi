@@ -95,6 +95,7 @@ class Track : public AudioStream {
       _path[0] = _pathA[0] = _pathB[0] = '\0';
       _state = Paused;
       _isActive = false;
+      _isPassthru = false;
       _scratch = new RecordCache();
       _master = new PlayCache();
       // set the time since last tap to a high value so the first tap
@@ -121,6 +122,9 @@ class Track : public AudioStream {
     // get/set whether the track is active
     bool isActive() { return(_isActive); }
     void setIsActive(bool v) { _isActive = v; }
+    // get/set whether the track should pass its input through
+    bool isPassthru() { return(_isPassthru); }
+    void setIsPassthru(bool v) { _isPassthru = v; }
     // erase the content on the track
     void erase();
     // return the length of the master track in blocks
@@ -144,6 +148,7 @@ class Track : public AudioStream {
     AudioDevice *_audio;
     AudioConnection *_inputConnection;
     bool _isActive;
+    bool _isPassthru;
     char _path[64];
     char _pathA[64];
     char _pathB[64];

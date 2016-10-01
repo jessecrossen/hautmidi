@@ -373,6 +373,7 @@ void Interface::update() {
         }
         else {
           newState = MaybeRecording;
+          tracksRecording++;
         }
       }
       // when the switch is released, we're either toggling playback or 
@@ -411,6 +412,8 @@ void Interface::update() {
     _tracks[i]->setState(newState);
     if (newState != oldState) _mainScreen->invalidate();
   }
+  // if no tracks are recording, use track 0 as a passthru device
+  _tracks[0]->setIsPassthru(tracksRecording == 0);
 }
 
 int Interface::setModeIndex(int index) {

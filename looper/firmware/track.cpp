@@ -63,12 +63,6 @@ void Track::setState(TrackState newState) {
   else if ((! isRecording()) && (oldState == Recording)) {
     // flush recorded audio
     _scratch->flush();
-    //!!! // TODO
-    //!!! size_t bytes;
-    //!!! do {
-    //!!!   bytes = _master.read(_writeBuffer, 512);
-    //!!!   if (bytes > 0) _scratch.write(_writeBuffer, bytes);
-    //!!! } while (bytes > 0);
 	  // swap the scratch and master files
 	  temp = _master->path();
 	  _master->setPath(_scratch->path());
@@ -135,45 +129,51 @@ void Track::updatePreroll() {
 }
 
 void Track::update() {
-  // playback and overdub
+  // check state
+  bool needsRecord = isRecording();
+  bool needsPlayback = isPlaying() || needsRecord;
+  bool needsInput = needsRecord || _isPassthru;
+  bool needsOutput = needsRecord || needsPlayback || _isPassthru;
+  // get input
+  audio_block_t *inBlock = NULL;
+  if (needsInput) inBlock = receiveReadOnly();
+  // get output
   audio_block_t *outBlock = NULL;
   if (_master->isOpen()) {
     size_t beginBlock = _master->block();
-    outBlock = _master->readBlock();
+    if (needsPlayback) outBlock = _master->readBlock();
     // recompute the track's loop length once the first block is played
     if ((beginBlock == 0) && (_master->block() != beginBlock)) {
       _master->playBlocks = _sync->trackStarting(this);
     }
   }
-  // if we're not playing or recording, don't route anything to output
-  if ((! isPlaying()) && (! isRecording())) {
-    if (outBlock) release(outBlock);
+  // if we have nothing to send to output, we're done
+  if (! needsOutput) {
+    if (inBlock) release(inBlock);
+    if (outBlock) release(outBlock);  
     return;
   }
-  // record
-  if ((_state == MaybeRecording) || (_state == Recording)) {
-    // mark when recording starts
-    if (_scratch->block() == 0) _sync->trackRecording(this);
-    // get a block of input
-    audio_block_t *inBlock = receiveReadOnly();
-	  // if we're overdubbing, mix the output block with the input
-	  audio_block_t *recordBlock = inBlock;
+  // mark when recording starts
+  if ((needsRecord) && (_scratch->block() == 0)) {
+    _sync->trackRecording(this);
+  }
+  // mix input and output
+  if (inBlock) {
 	  if (outBlock) {
-	    recordBlock = allocate();
 	    int16_t *inSample = inBlock->data;
 	    int16_t *outSample = outBlock->data;
-	    int16_t *recordSample = recordBlock->data;
 	    for (size_t i = 0; i < AUDIO_BLOCK_SAMPLES; i++) {
-	      *recordSample++ = *inSample++ + *outSample++;
+	      *outSample += *inSample;
+	      outSample++; inSample++;
 	    }
 	    release(inBlock);
 	  }
-	  if (! _scratch->writeBlock(recordBlock)) {
-	    release(recordBlock);
-	  }
+	  else outBlock = inBlock;
   }
-  // send the output block if there is one
-  if (outBlock != NULL) {
+  if (outBlock) {
+    // record the output block
+    if (needsRecord) _scratch->writeBlock(outBlock);
+    // send output to the mixer
     transmit(outBlock, 0);
     release(outBlock);
   }
