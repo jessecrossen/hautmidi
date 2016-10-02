@@ -8,6 +8,7 @@ void Track::setPath(char *path) {
   if (path == NULL) return;
   if (strncmp(path, _path, sizeof(_path)) == 0) return;
   strncpy(_path, path, sizeof(_path));
+  INFO2("Track::setPath", _path);
   // delete the old scratch path to avoid confusion 
   //  when we load this loop again
   char *oldScratchPath = NULL;
@@ -21,8 +22,22 @@ void Track::setPath(char *path) {
   // make interchangeable paths for the scratch and master audio files
   snprintf(_pathA, sizeof(_pathA), "%s.A", _path);
   snprintf(_pathB, sizeof(_pathB), "%s.B", _path);
-  // whichever file exists should be the master
+  // whichever file exists and has more bytes should be the master
+  size_t sizeA = 0, sizeB = 0;
+  File f;
+  if (SD.exists(_pathA)) {
+    f = SD.open(_pathA, O_READ);
+    sizeA = f.size();
+    f.close();
+  }
   if (SD.exists(_pathB)) {
+    f = SD.open(_pathB, O_READ);
+    sizeB = f.size();
+    f.close();
+  }
+  INFO3("Track::setPath", _pathA, sizeA);
+  INFO3("Track::setPath", _pathB, sizeB);
+  if (sizeB > sizeA) {
     _master->setPath(_pathB);
     _scratch->setPath(_pathA);
   }
@@ -30,8 +45,9 @@ void Track::setPath(char *path) {
     _master->setPath(_pathA);
     _scratch->setPath(_pathB);
   }
-  // open the master file
+  // open the files
   _master->open();
+  _scratch->open();
   // pause and deactivate the track when its path changes
   setIsActive(false);
   setState(Paused);
@@ -44,20 +60,14 @@ void Track::setState(TrackState newState) {
   bool wasRecording = isRecording();
   bool willBeRecording = (newState == MaybeRecording) || (newState == Recording);
   // open the scratch track before recording starts
-  if ((willBeRecording) && (! wasRecording)) {
-    _scratch->open();
-    _master->fillBuffer();
-  }
+  if ((willBeRecording) && (! wasRecording)) _scratch->open();
   _state = newState;
   sinceStateChange = 0;
   // when cancelled recording stops...
   if ((! isRecording()) && (oldState == MaybeRecording)) {
     _sync->cancelRecording(this);
-    // remove the scratch file when recording is cancelled
-    temp = _scratch->path();
-    _scratch->setPath(NULL);
-	  SD.remove(_scratch->path());
-	  _scratch->setPath(temp);
+    // reset the scratch file to the beginning
+    _scratch->reset();
 	}
   // when true recording stops...
   else if ((! isRecording()) && (oldState == Recording)) {
@@ -90,6 +100,7 @@ bool Track::isOverdubbing() {
 }
 
 void Track::erase() {
+  INFO2("Track::erase", _path);
   setState(Paused);
   _master->setPath(NULL);
   _scratch->setPath(NULL);
@@ -100,52 +111,51 @@ void Track::erase() {
   _sync->trackErased(this);
 }
 
-size_t Track::masterBlocks() {
-  if (! _master->isOpen()) return(0);
-  return(_master->blocks());
-}
-size_t Track::recordingBlock() {
-  if (! _scratch) return(0);
-  return(_scratch->block());
-}
-size_t Track::playingBlock() {
-  if (! _master) return(0);
-  return(_master->block());
-}
-size_t Track::playBlocks() {
-  if (! _master) return(0);
-  return(_master->playBlocks);
-}
+size_t Track::masterBlocks() { return(_master->blocks()); }
+size_t Track::playingBlock() { return(_master->seq()); }
+size_t Track::recordingBlock() { return(_scratch->blocks()); }
+size_t Track::playBlocks() { return(_master->playBlocks); }
 
 void Track::updateCaches() {
   if (_master->isOpen()) _master->fillBuffer();
   if ((isRecording()) && (_scratch->isOpen())) _scratch->emptyBuffer();
 }
 
+bool Track::isPlaybackCacheEmpty() {
+  if (! _master->isOpen()) return(false);
+  return(_master->isEmpty());
+}
+bool Track::isPlaybackCacheFull() {
+  if (! _master->isOpen()) return(true);
+  return(_master->isFull());
+}
+
 void Track::updatePreroll() {
   if (_master->isOpen()) {
-    _master->preroll = _sync->blocksUntilNextSyncPoint(this, masterBlocks());
+    _master->preroll = _sync->blocksUntilNextSyncPoint(this, _master->blocks());
   }
 }
 
 void Track::update() {
   // check state
   bool needsRecord = isRecording();
-  bool needsPlayback = isPlaying() || needsRecord;
   bool needsInput = needsRecord || _isPassthru;
-  bool needsOutput = needsRecord || needsPlayback || _isPassthru;
+  bool needsOutput = needsRecord || isPlaying() || _isPassthru;
   // get input
   audio_block_t *inBlock = NULL;
-  if (needsInput) inBlock = receiveReadOnly();
-  // get output
-  audio_block_t *outBlock = NULL;
-  if (_master->isOpen()) {
-    size_t beginBlock = _master->block();
-    if (needsPlayback) outBlock = _master->readBlock();
-    // recompute the track's loop length once the first block is played
-    if ((beginBlock == 0) && (_master->block() != beginBlock)) {
-      _master->playBlocks = _sync->trackStarting(this);
+  if (needsInput) {
+    inBlock = receiveReadOnly();
+    if (inBlock == NULL) {
+      WARN2("Track::update no input available", index);
     }
+  }
+  // get output
+  size_t beginSeq = _master->seq();
+  audio_block_t *outBlock = _master->readBlock();
+  // recompute the track's loop length once the first block is played
+  if ((beginSeq == 0) && (_master->seq() != beginSeq)) {
+    _master->playBlocks = _sync->trackStarting(this);
+    INFO3("Track::update starting loop", index, _master->playBlocks);
   }
   // if we have nothing to send to output, we're done
   if (! needsOutput) {
@@ -154,8 +164,9 @@ void Track::update() {
     return;
   }
   // mark when recording starts
-  if ((needsRecord) && (_scratch->block() == 0)) {
+  if ((needsRecord) && (_scratch->blocks() == 0)) {
     _sync->trackRecording(this);
+    INFO2("Track::update starting record", index);
   }
   // mix input and output
   if (inBlock) {
@@ -171,8 +182,17 @@ void Track::update() {
 	  else outBlock = inBlock;
   }
   if (outBlock) {
-    // record the output block
-    if (needsRecord) _scratch->writeBlock(outBlock);
+    // record using a copy of the output block
+    if (needsRecord) {
+      audio_block_t *recordBlock = allocate();
+      if (recordBlock == NULL) {
+        WARN1("Track::update no block to record to");
+      }
+      else {
+        memcpy(recordBlock->data, outBlock->data, AUDIO_BLOCK_BYTES);
+        _scratch->writeBlock(recordBlock);
+      }
+    }
     // send output to the mixer
     transmit(outBlock, 0);
     release(outBlock);
@@ -180,6 +200,19 @@ void Track::update() {
 }
 
 // RECORDING CACHE ************************************************************
+
+void RecordCache::reset() {
+  if (_file) _file.seek(0);
+  _path = NULL;
+  _blocks = 0;
+  _head = _tail = _size = 0;
+  for (size_t i = 0; i < RECORD_BUFFER_BLOCKS; i++) {
+    if (_buffer[i] != NULL) {
+      AudioStream::release(_buffer[i]);
+      _buffer[i] = NULL;
+    }
+  }
+}
 
 bool RecordCache::open() {
   if (_path == NULL) return(false);
@@ -190,34 +223,33 @@ bool RecordCache::open() {
 
 bool RecordCache::writeBlock(audio_block_t *block) {
   // if the buffer is full, we have to drop the block
-  if (_size >= RECORD_BUFFER_BLOCKS) return(false);
+  if (_size >= RECORD_BUFFER_BLOCKS) {
+    WARN1("RecordCache::writeBlock buffer overflow");
+    release(block);
+    return(false);
+  }
   _buffer[_tail] = block;
-  _tail++;
-  _size++;
+  _tail++; _size++;
   if (_tail >= RECORD_BUFFER_BLOCKS) _tail = 0;
   _blocks++;
-  _block++;
   return(true);
 }
 
 void RecordCache::flush() {
-  while (_size > 0) {
-    if (writeChunk() == 0) break;
-  }
+  while (writeChunk() > 0) { }
 }
 
 void RecordCache::emptyBuffer() {
-  if (_size < 2) return;
+  if (_size < BLOCKS_PER_CHUNK) return;
   writeChunk();
 }
 
 size_t RecordCache::writeChunk() {
   static byte chunkBuffer[512];
-  if (_size == 0) return(0);
-  if (! open()) return(0);
+  if ((! open()) || (_size == 0)) return(0);
   size_t bytes = 0;
   audio_block_t *block;
-  for (size_t i = 0; (i < 2) && (_size > 0); i++) {
+  for (size_t i = 0; (i < BLOCKS_PER_CHUNK) && (_size > 0); i++) {
     block = _buffer[_head];
     memcpy(chunkBuffer + (i * AUDIO_BLOCK_BYTES), block->data, AUDIO_BLOCK_BYTES);
     bytes += AUDIO_BLOCK_BYTES;
@@ -232,13 +264,30 @@ size_t RecordCache::writeChunk() {
 
 // PLAYBACK CACHE *************************************************************
 
+void PlayCache::reset() {
+  if (_file) _file.seek(0);
+  _path = NULL;
+  _head = _tail = _size = _blocks = _seq = 0;
+  for (size_t i = 0; i < PLAY_BUFFER_BLOCKS; i++) {
+    if (_buffer[i].block != NULL) {
+      AudioStream::release(_buffer[i].block);
+      _buffer[i].block = NULL;
+    }
+  }
+}
+
 bool PlayCache::open() {
-  if (_path == NULL) return(false);
+  if (_path == NULL) {
+    WARN1("PlayCache::open has no path");
+    return(false);
+  }
   if (! _file) {
     _file = SD.open(_path, O_READ);
     size_t bytes = _file ? _file.size() : 0;
+    INFO3("PlayCache::open", _path, bytes);
     // guard against small files, which could cause a tight loop
     if (bytes < AUDIO_BLOCK_BYTES) {
+      WARN3("PlayCache::open has no data", _path, bytes);
       _file.close();
       SD.remove(_path);
       return(false);
@@ -246,77 +295,118 @@ bool PlayCache::open() {
     _blocks = bytes / AUDIO_BLOCK_BYTES;
     playBlocks = _blocks;
     preroll = 0;
+    DBG3("PlayCache::open", _blocks, "blocks");
   }
-  if (! _file) return(false);
   return(true);
 }
 
 audio_block_t *PlayCache::readBlock() {
-  // if we have no blocks, there's nothing to play
-  if (_size == 0) return(NULL);
+  // if the file isn't open, we can't be caching anything
+  if (! _file) return(NULL);
   // if we're still in the preroll, there's nothing to play
   if (preroll > 0) {
     preroll--;
     return(NULL);
   }
-  // if we're within the number of blocks available, we have something to play
+  // see if we need a block from the range in the loop
   audio_block_t *block = NULL;
-  if (_block < _blocks) {
-    block = _buffer[_head];
-    _buffer[_head] = NULL;
-    _head++;
-    _size--;
-    if (_head >= PLAY_BUFFER_BLOCKS) _head = 0;
-    // fade in/out to avoid clicking at the ends of the loop
-    if ((_block == 0) || (_block == playBlocks - 1)) {
-      int16_t *sample = (_block == 0) ? 
+  if (_seq < _blocks) {
+    while ((_size > 0) && (block == NULL)) {
+      if (_buffer[_head].seq == _seq) {
+        block = _buffer[_head].block;
+      }
+      else {
+        release(_buffer[_head].block);
+      }
+      _buffer[_head].block = NULL;
+      _head = (_head + 1) % PLAY_BUFFER_BLOCKS;
+      _size--;
+    }
+  }
+  // advance the sequence number
+  _seq = (_seq + 1) % playBlocks;
+  return(block);
+}
+
+void PlayCache::fillBuffer() {
+  // only read a chunk if we have enough space to use all of it
+  if (_size + BLOCKS_PER_CHUNK > PLAY_BUFFER_BLOCKS) return;
+  readChunk();
+}
+
+void PlayCache::readChunk() {
+  size_t i;
+  static byte chunkBuffer[512];
+  static bool isOffsetCached[PLAY_BUFFER_BLOCKS];
+  if (! open()) return;
+  if (_size >= PLAY_BUFFER_BLOCKS) return;
+  // get the maximum number of blocks to be played from the loop
+  size_t loopBlocks = _blocks;
+  if (playBlocks < loopBlocks) loopBlocks = playBlocks;
+  // the sequence position we should be caching
+  size_t seqNeeded = _seq;
+  // if the required sequence is past the section to play, 
+  //  we'll need blocks starting at the beginning when the track loops
+  if (seqNeeded >= loopBlocks) seqNeeded = 0;
+  // check whether the next buffer-full of blocks is cached
+  size_t seqAvailable;
+  for (i = 0; i < PLAY_BUFFER_BLOCKS; i++) isOffsetCached[i] = false;
+  for (i = 0; i < PLAY_BUFFER_BLOCKS; i++) {
+    if (_buffer[i].block == NULL) continue;
+    seqAvailable = _buffer[i].seq;
+    if (seqAvailable >= loopBlocks) continue;
+    if (seqAvailable < seqNeeded) seqAvailable += loopBlocks;
+    if ((seqAvailable >= seqNeeded) && 
+        (seqAvailable < seqNeeded + PLAY_BUFFER_BLOCKS)) {
+      isOffsetCached[seqAvailable - seqNeeded] = true;
+    }
+  }
+  // get the first block we'll need in the future that is not yet cached
+  for (i = 0; i < PLAY_BUFFER_BLOCKS; i++) {
+    if (! isOffsetCached[i]) {
+      seqNeeded = (seqNeeded + i) % loopBlocks;
+      break;
+    }
+  }
+  // get our current sequence position in the file
+  size_t seqInFile = _file.position() / AUDIO_BLOCK_BYTES;
+  // if we can't get our desired chunk from this position, we need to seek
+  if (seqNeeded - seqInFile >= BLOCKS_PER_CHUNK) {
+    DBG3("PlayCache::readChunk seek miss", seqNeeded, seqInFile);
+    // always read in aligned 512-byte blocks for speed
+    size_t seekPos = seqNeeded * AUDIO_BLOCK_BYTES;
+    seekPos -= (seekPos % 512);
+    _file.seek(seekPos);
+    seqInFile = _file.position() / AUDIO_BLOCK_BYTES;
+    DBG3("PlayCache::readChunk did seek", seqNeeded, seqInFile);
+  }
+  // read a chunk from the file
+  size_t readBytes = _file.read(chunkBuffer, 512);
+  if (readBytes < 512) {
+    DBG2("PlayCache::readChunk underflow", readBytes);
+  }
+  // get the needed block from the read buffer
+  audio_block_t *block;
+  size_t maxOffset = readBytes - AUDIO_BLOCK_BYTES;
+  size_t offset = (seqNeeded - seqInFile) * AUDIO_BLOCK_BYTES;
+  for (; offset <= maxOffset; offset += AUDIO_BLOCK_BYTES) {
+    if ((_size >= PLAY_BUFFER_BLOCKS) || (seqNeeded >= loopBlocks)) break;
+    block = allocate();
+    memcpy(block->data, chunkBuffer + offset, AUDIO_BLOCK_BYTES);
+    // fade the head/tail of the first/last blocks to avoid a click
+    if ((seqNeeded == 0) || (seqNeeded == loopBlocks - 1)) {
+      int16_t *sample = (seqNeeded == 0) ? 
         block->data : (block->data + AUDIO_BLOCK_SAMPLES - 1);
-      int step = (_block == 0) ? 1 : -1;
-      int32_t count = 32;
+      int step = (seqNeeded == 0) ? 1 : -1;
+      int32_t count = 16;
       for (int32_t i = 0; i < count; i++) {
         *sample = (int16_t)(((int32_t)(*sample) * i) / count);
         sample += step;
       }
     }
-  }
-  // advance the block counter
-  _block = (_block + 1) % playBlocks;
-  return(block);
-}
-
-void PlayCache::fillBuffer() {
-  if (_size + 1 >= PLAY_BUFFER_BLOCKS) return;
-  readChunk();
-}
-
-size_t PlayCache::readChunk() {
-  static byte chunkBuffer[512];
-  if (! open()) return(0);
-  if (_size + 1 >= PLAY_BUFFER_BLOCKS) return(0);
-  // see if we need to re-seek to zero to sync to the current playback length
-  size_t blocksLeft = playBlocks - (_file.position() / AUDIO_BLOCK_BYTES);
-  size_t bytesToRead = 512;
-  if (blocksLeft <= 0) {
-    _file.seek(0);
-  }
-  else if (blocksLeft < (512 / AUDIO_BLOCK_BYTES)) {
-    bytesToRead = blocksLeft * AUDIO_BLOCK_BYTES;
-  }
-  // read a chunk
-  size_t readBytes = _file.read(chunkBuffer, bytesToRead);
-  // if we reach the end of the loop, start at the beginning
-  if (readBytes < 512) {
-    _file.seek(0);
-    readBytes += _file.read(chunkBuffer + readBytes, 512 - readBytes);
-  }
-  audio_block_t *block;
-  for (size_t offset = 0; offset < readBytes; offset += AUDIO_BLOCK_BYTES) {
-    block = allocate();
-    memcpy(block->data, chunkBuffer + offset, AUDIO_BLOCK_BYTES);
-    _buffer[_tail] = block;
-    _tail++;
-    _size++;
+    _buffer[_tail].block = block;
+    _buffer[_tail].seq = seqNeeded++;
+    _tail++; _size++;
     if (_tail >= PLAY_BUFFER_BLOCKS) _tail = 0;
   }
-  return(readBytes);
 }

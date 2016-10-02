@@ -1,17 +1,9 @@
 #include "sync.h"
 
-// get the index of the given track pointer
-uint8_t Sync::_getTrackIndex(Track *track) {
-  for (uint8_t i = 0; i < _trackCount; i++) {
-    if (_tracks[i] == track) return(i);
-  }
-  return(0);
-}
-
 size_t Sync::idealLoopBlocks(Track *track) {
   SyncPoint *p;
   uint8_t ti;
-  uint8_t i = _getTrackIndex(track);
+  uint8_t i = track->index;
   // count sync points to the track for each other track
   size_t *counts = new size_t[_trackCount];
   for (ti = 0; ti < _trackCount; ti++) counts[ti] = 0;
@@ -52,7 +44,7 @@ size_t Sync::idealLoopBlocks(Track *track) {
 
 size_t Sync::blocksUntilNextSyncPoint(Track *track, size_t idealBlocks) {
   SyncPoint *p;
-  uint8_t i = _getTrackIndex(track);
+  uint8_t i = track->index;
   // examine all sync points where this track could start its next loop
   size_t minBlocks = idealBlocks / 4;
   if (minBlocks < 4) minBlocks = 4;
@@ -83,7 +75,7 @@ size_t Sync::blocksUntilNextSyncPoint(Track *track, size_t idealBlocks) {
 
 size_t Sync::trackStarting(Track *track) {
   SyncPoint *p;
-  uint8_t si = _getTrackIndex(track);
+  uint8_t si = track->index;
   // if any other track is recording, add a provisional sync point to it
   for (uint8_t i = 0; i < _trackCount; i++) {
     if ((i != si) && (_tracks[i]->isRecording())) {
@@ -105,7 +97,7 @@ size_t Sync::trackStarting(Track *track) {
 
 void Sync::trackRecording(Track *track) {
   SyncPoint *p;
-  uint8_t ri = _getTrackIndex(track);
+  uint8_t ri = track->index;
   // add a sync point onto any other playing tracks
   for (uint8_t i = 0; i < _trackCount; i++) {
     if ((i != ri) && (_tracks[i]->isPlaying())) {
@@ -129,7 +121,7 @@ void Sync::cancelRecording(Track *track) {
 }
 
 void Sync::commitRecording(Track *track) {
-  uint8_t i = _getTrackIndex(track);
+  uint8_t i = track->index;
   // remove all old sync points involving the given track and 
   //  promote all provisional ones
   SyncPoint *p = _head;
@@ -153,7 +145,7 @@ void Sync::commitRecording(Track *track) {
 }
 
 void Sync::trackErased(Track *track) {
-  uint8_t i = _getTrackIndex(track);
+  uint8_t i = track->index;
   // remove all sync points involving the erased track
   SyncPoint *p = _head;
   while (p) {

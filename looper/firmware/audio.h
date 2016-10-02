@@ -4,6 +4,12 @@
 #include <Audio.h>
 #include <Wire.h>
 
+#define AUDIO_BLOCK_BYTES (AUDIO_BLOCK_SAMPLES * sizeof(int16_t))
+#define BLOCKS_PER_CHUNK (512 / AUDIO_BLOCK_BYTES)
+#define RECORD_BUFFER_BLOCKS 64
+#define PLAY_BUFFER_BLOCKS 8
+#define TOTAL_BLOCKS (RECORD_BUFFER_BLOCKS + (PLAY_BUFFER_BLOCKS * 4) + 16)
+
 typedef enum {
   InputSourceMic = 0,
   InputSourceLine,
@@ -13,7 +19,7 @@ typedef enum {
 class AudioDevice {
   public:
     AudioDevice() {
-      AudioMemory(80);
+      AudioMemory(TOTAL_BLOCKS);
       _source = InputSourceUndefined;
       _audioControl = new AudioControlSGTL5000();
       _input = new AudioInputI2S();

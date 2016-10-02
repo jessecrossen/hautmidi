@@ -265,6 +265,7 @@ Interface::Interface(LiquidCrystal *lcd, Encoder *rotary, Bounce *button,
   _sync = new Sync(_tracks, TRACK_COUNT);
   for (i = 0; i < TRACK_COUNT; i++) {
     _tracks[i] = new Track(_audio, _sync);
+    _tracks[i]->index = i;
   }
   // start the SD card
   if (! SD.begin(10)) {
@@ -340,21 +341,17 @@ void Interface::update() {
       _sinceLastChange = 0;
     }
   }
-  _modes[_modeIndex]->update(_lcd);
   // update caches for all tracks
+  bool trackHasEmptyCache = false;
   for (i = 0; i < TRACK_COUNT; i++) {
     _tracks[i]->updateCaches();
-  }
-  // see if we need to save settings
-  if ((_needsSave) && (_sinceLastChange >= 2000)) {
-    save();
+    if (_tracks[i]->isPlaybackCacheEmpty()) trackHasEmptyCache = true;
   }
   // count the number of tracks recording so we never have more than one
   int tracksRecording = 0;
   for (i = 0; i < TRACK_COUNT; i++) {
     if (_tracks[i]->isRecording()) tracksRecording++;
   }
-  // update track state from foot switches
   for (i = 0; i < TRACK_COUNT; i++) {
     if (_tracks[i] == NULL) continue;
     TrackState oldState = _tracks[i]->state();
@@ -414,6 +411,14 @@ void Interface::update() {
   }
   // if no tracks are recording, use track 0 as a passthru device
   _tracks[0]->setIsPassthru(tracksRecording == 0);
+  // do operations that take time only after caches have blocks in them
+  if (! trackHasEmptyCache) {
+    _modes[_modeIndex]->update(_lcd);
+    // see if we need to save settings
+    if ((_needsSave) && (_sinceLastChange >= 2000)) {
+      save();
+    }
+  }
 }
 
 int Interface::setModeIndex(int index) {

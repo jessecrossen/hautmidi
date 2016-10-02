@@ -6,11 +6,7 @@
 
 #include "audio.h"
 #include "sync.h"
-
-#define AUDIO_BLOCK_BYTES (AUDIO_BLOCK_SAMPLES * sizeof(int16_t))
-#define RECORD_BUFFER_BLOCKS 50
-#define PLAY_BUFFER_BLOCKS 4
-#define MAX_BUFFER_BLOCKS RECORD_BUFFER_BLOCKS
+#include "trace.h"
 
 // forward declaration for circular references
 class Sync;
@@ -24,66 +20,69 @@ typedef enum {
 
 class FileCache : protected AudioStream {
   public:
-    FileCache() : AudioStream(0, NULL) {
-      for (size_t i = 0; i < MAX_BUFFER_BLOCKS; i++) {
-        _buffer[i] = NULL;
-      }
-      reset();
-    };
+    FileCache() : AudioStream(0, NULL) { }
+    virtual void reset() { }
     char *path() { return(_path); }
     void setPath(char *newPath) {
-      if ((newPath != NULL) && (strcmp(newPath, _path) == 0)) return;
+      if ((newPath != NULL) && (strcmp(newPath, _path) == 0)) {
+        WARN2("FileCache::setPath path is NULL or unchanged", newPath);
+        return;
+      }
+      if (_file) _file.close();
       reset();
       _path = newPath;
+      DBG2("FileCache::setPath", _path);
     }
     bool isOpen() { return((bool)_file); }
-    size_t blocks() { return(_blocks); }
-    size_t block() { return(_block); }
     virtual void update() { }
-  protected:
-    void reset() {
-      if (_file) _file.close();
-      _path = NULL;
-      _blocks = 0;
-      _block = 0;
-      _head = _tail = _size = 0;
-      for (size_t i = 0; i < MAX_BUFFER_BLOCKS; i++) {
-        if (_buffer[i] != NULL) {
-          AudioStream::release(_buffer[i]);
-          _buffer[i] = NULL;
-        }
-      }
-    }
   protected:
     char *_path;
     File _file;
-    size_t _head;
-    size_t _tail;
-    size_t _size;
-    size_t _blocks;
-    size_t _block;
-    audio_block_t * volatile _buffer[MAX_BUFFER_BLOCKS];
 };
 
 class RecordCache : public FileCache {
   public:
+    RecordCache() : FileCache() {
+      for (size_t i = 0; i < RECORD_BUFFER_BLOCKS; i++) _buffer[i] = NULL;
+      reset();
+    };
+    virtual void reset();
     bool open();
     bool writeBlock(audio_block_t *block);
     void flush();
     void emptyBuffer();
-  private:
+    size_t blocks() { return(_blocks); }
+  protected:
+    size_t _head, _tail, _size, _blocks;
+    audio_block_t * volatile _buffer[RECORD_BUFFER_BLOCKS];
     size_t writeChunk();
 };
 
+typedef struct {
+  size_t seq;
+  audio_block_t * volatile block;  
+} PlayBlock;
+
 class PlayCache : public FileCache {
   public:
+    PlayCache() : FileCache() {
+      for (size_t i = 0; i < PLAY_BUFFER_BLOCKS; i++) _buffer[i].block = NULL;
+      reset();
+    };
+    virtual void reset();
     bool open();
     audio_block_t *readBlock();
     void fillBuffer();
     size_t playBlocks;
     size_t preroll;
-  private:
-    size_t readChunk();
+    bool isEmpty() { return((_blocks > 0) && (_size == 0)); }
+    bool isFull() { return(_size >= PLAY_BUFFER_BLOCKS); }
+    size_t blocks() { return(_file ? _blocks : 0); }
+    size_t seq() { return(_seq); }
+  protected:
+    size_t _head, _tail, _size, _blocks, _seq;
+    PlayBlock _buffer[PLAY_BUFFER_BLOCKS];
+    void readChunk();
 };
 
 class Track : public AudioStream {
@@ -137,11 +136,17 @@ class Track : public AudioStream {
     
     // update track caches
     void updateCaches();
+    // return whether the track cache is empty/full
+    bool isPlaybackCacheEmpty();
+    bool isPlaybackCacheFull();
     // set the track preroll before playback starts
     void updatePreroll();
     
     // handle audio streams into and out of the track
     virtual void update();
+    
+    // the index of the track in the list
+    size_t index;
   
   private:
     TrackState _state;

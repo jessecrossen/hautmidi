@@ -58,8 +58,6 @@ class Sync {
     Track **_tracks;
     int _trackCount;
     char _path[64];
-
-    uint8_t _getTrackIndex(Track *track);
     
     void _addPoint(SyncPoint *p);
     SyncPoint *_removePoint(SyncPoint *p);
