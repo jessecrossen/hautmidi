@@ -152,6 +152,8 @@ void Sync::trackErased(Track *track) {
     if ((p->source == i) || (p->target == i)) p = _removePoint(p);
     else p = p->next;
   }
+  // save the changed sync points
+  save();
 }
 
 // DOUBLY-LINKED LIST *********************************************************
