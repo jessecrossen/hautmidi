@@ -3,11 +3,15 @@
 #include <string.h>
 #include <EEPROM.h>
 
+#include "audio.h"
+
 // the maximum number of milliseconds of holding down a switch 
 //  that qualifies as a tap as opposed to a hold
 #define TAP_MILLISECONDS 500
 // the maximum number of milliseconds between taps to count as a double tap
 #define DOUBLE_TAP_MILLISECONDS 500
+// the number of blocks to show the indicator that a loop has started
+#define LOOP_START_BLOCKS (BLOCKS_PER_SECOND / 4)
 
 // GENERIC ********************************************************************
 
@@ -100,10 +104,12 @@ void LoopSelectMode::display(LiquidCrystal *lcd) {
   lcd->print("         ");
   // display track state
   lcd->setCursor(0, 1);
+  Track *track;
   for (i = 0; i < TRACK_COUNT; i++) {
-    switch (_tracks[i]->state()) {
+    track = _tracks[i];
+    switch (track->state()) {
       case (Paused):
-        if (_tracks[i]->masterBlocks() == 0) {
+        if (track->masterBlocks() == 0) {
           lcd->print("-");
         }
         else {
@@ -111,7 +117,10 @@ void LoopSelectMode::display(LiquidCrystal *lcd) {
         }
         break;
       case (Playing):
-        lcd->print("\x04");
+        // flash the symbol when a track is about to restart its loop
+        if (track->playingBlock() + LOOP_START_BLOCKS > track->playBlocks()) 
+          lcd->print("O");
+        else lcd->print("\x04");
         break;
       case (MaybeRecording):
         lcd->print("*");
@@ -326,6 +335,8 @@ void Interface::save() {
 
 void Interface::update() {
   int i;
+  static size_t lastBlock[TRACK_COUNT] = { 0, 0, 0, 0 };
+  Track *track;
   // switch modes when the button is pressed
   if ((_button->update()) && (_button->fallingEdge())) {
     setModeIndex(_modeIndex + 1);
@@ -344,17 +355,20 @@ void Interface::update() {
   // update caches for all tracks
   bool trackHasEmptyCache = false;
   for (i = 0; i < TRACK_COUNT; i++) {
-    _tracks[i]->updateCaches();
-    if (_tracks[i]->isPlaybackCacheEmpty()) trackHasEmptyCache = true;
+    track = _tracks[i];
+    track->updateCaches();
+    if (track->isPlaybackCacheEmpty()) trackHasEmptyCache = true;
   }
   // count the number of tracks recording so we never have more than one
   int tracksRecording = 0;
   for (i = 0; i < TRACK_COUNT; i++) {
-    if (_tracks[i]->isRecording()) tracksRecording++;
+    track = _tracks[i];
+    if (track->isRecording()) tracksRecording++;
   }
   for (i = 0; i < TRACK_COUNT; i++) {
-    if (_tracks[i] == NULL) continue;
-    TrackState oldState = _tracks[i]->state();
+    track = _tracks[i];
+    if (track == NULL) continue;
+    TrackState oldState = track->state();
     TrackState newState = oldState;
     if (_switches[i]->update()) {
       // when the switch is depressed, we're either beginning 
@@ -366,7 +380,7 @@ void Interface::update() {
         if (tracksRecording > 0) {
           // reset the state timer even though state is not actually changing,
           //  because we want to treat this as a normal tap
-          _tracks[i]->sinceStateChange = 0;
+          track->sinceStateChange = 0;
         }
         else {
           newState = MaybeRecording;
@@ -378,36 +392,43 @@ void Interface::update() {
       //  or erasing the track if we're close enough to the last tap time
       else if (_switches[i]->risingEdge()) {
         // a short press means toggle the playback state
-        if (_tracks[i]->sinceStateChange <= TAP_MILLISECONDS) {
+        if (track->sinceStateChange <= TAP_MILLISECONDS) {
           // check for a double-tap to erase
-          if (_tracks[i]->sinceLastTap <= DOUBLE_TAP_MILLISECONDS) {
-            _tracks[i]->erase();
+          if (track->sinceLastTap <= DOUBLE_TAP_MILLISECONDS) {
+            track->erase();
             _mainScreen->invalidate();
             newState = Paused;
           }
           // handle a single tap
           else {
-            bool setTrackActive = ! _tracks[i]->isActive();
+            bool setTrackActive = ! track->isActive();
             // if the track is empty, don't allow it to play
-            if (_tracks[i]->masterBlocks() == 0) setTrackActive = false;
-            _tracks[i]->setIsActive(setTrackActive);
-            newState = _tracks[i]->isActive() ? Playing : Paused;
+            if (track->masterBlocks() == 0) setTrackActive = false;
+            track->setIsActive(setTrackActive);
+            newState = track->isActive() ? Playing : Paused;
           }
-          _tracks[i]->sinceLastTap = 0;
+          track->sinceLastTap = 0;
         }
         // a long press means stop recording and enter playback mode
         else {
-          _tracks[i]->setIsActive(true);
+          track->setIsActive(true);
           newState = Playing;
         }
       }
     }
     else if ((oldState == MaybeRecording) && 
-             (_tracks[i]->sinceStateChange > TAP_MILLISECONDS)) {
+             (track->sinceStateChange > TAP_MILLISECONDS)) {
       newState = Recording;
     }
-    _tracks[i]->setState(newState);
+    track->setState(newState);
     if (newState != oldState) _mainScreen->invalidate();
+    // see if we've crossed any block boundaries that require display changes
+    size_t block = track->playingBlock();
+    size_t endBoundary = track->playBlocks() - LOOP_START_BLOCKS;
+    if (lastBlock[i] > block) _mainScreen->invalidate();
+    else if ((lastBlock[i] <= endBoundary) && (block > endBoundary)) 
+      _mainScreen->invalidate();
+    lastBlock[i] = block;
   }
   // if no tracks are recording, use track 0 as a passthru device
   _tracks[0]->setIsPassthru(tracksRecording == 0);
