@@ -4,12 +4,20 @@
 #include <Audio.h>
 #include <Wire.h>
 
+// the number of bytes in one unit of audio
 #define AUDIO_BLOCK_BYTES (AUDIO_BLOCK_SAMPLES * sizeof(int16_t))
+// the ideal number of blocks to write to a file at one time
 #define BLOCKS_PER_CHUNK (512 / AUDIO_BLOCK_BYTES)
-#define RECORD_BUFFER_BLOCKS 64
+// the number of blocks to allocate to buffer recording
+#define RECORD_BUFFER_BLOCKS 96
+// the number of blocks to allocate per track to buffer playback
 #define PLAY_BUFFER_BLOCKS 8
+// the total number of blocks to allocate
 #define TOTAL_BLOCKS (RECORD_BUFFER_BLOCKS + (PLAY_BUFFER_BLOCKS * 4) + 16)
+// the approximate number of blocks that plays in one second
 #define BLOCKS_PER_SECOND (AUDIO_SAMPLE_RATE / AUDIO_BLOCK_SAMPLES)
+// the threshold below which to consider the input silent
+#define SILENCE_THRESHOLD 2000
 
 typedef enum {
   InputSourceMic = 0,

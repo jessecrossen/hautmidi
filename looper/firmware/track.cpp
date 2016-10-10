@@ -1,7 +1,11 @@
 #include "track.h"
 
 #include <string.h>
+#include <math.h>
 
+#include "audio.h"
+
+#define TRACE 1
 #include "trace.h"
 
 // TRACK **********************************************************************
@@ -141,8 +145,9 @@ void Track::updatePreroll() {
 void Track::update() {
   // check state
   bool needsRecord = isRecording();
+  bool needsPlayback = isPlaying();
   bool needsInput = needsRecord || _isPassthru;
-  bool needsOutput = needsRecord || isPlaying() || _isPassthru;
+  bool needsOutput = needsRecord || needsPlayback || _isPassthru;
   // get input
   audio_block_t *inBlock = NULL;
   if (needsInput) {
@@ -154,6 +159,10 @@ void Track::update() {
   // get output
   size_t beginSeq = _master->seq();
   audio_block_t *outBlock = _master->readBlock();
+  if (! needsPlayback) {
+    release(outBlock);
+    outBlock = NULL;
+  }
   // recompute the track's loop length once the first block is played
   if ((beginSeq == 0) && (_master->seq() != beginSeq)) {
     _master->playBlocks = _sync->trackStarting(this);
@@ -165,8 +174,24 @@ void Track::update() {
     if (outBlock) release(outBlock);  
     return;
   }
-  // mark when recording starts
+  // handle the beginning of recording
   if ((needsRecord) && (_scratch->blocks() == 0)) {
+    // omit silence when first recording to a track, but not when overdubbing
+    if ((inBlock) && (! outBlock)) {
+      int16_t *sample = inBlock->data;
+      bool isSilent = true;
+      for (size_t i = 0; i < AUDIO_BLOCK_SAMPLES; i++) {
+        if (abs(*sample++) > SILENCE_THRESHOLD) {
+          isSilent = false;
+          break;
+        }
+      }
+      if (isSilent) {
+        release(inBlock);
+        return;
+      }
+    }
+    // mark when recording actually starts
     _sync->trackRecording(this);
     INFO2("Track::update starting record", index);
   }

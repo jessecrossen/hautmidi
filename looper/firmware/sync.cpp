@@ -1,5 +1,6 @@
 #include "sync.h"
 
+#define TRACE 0
 #include "trace.h"
 
 size_t Sync::idealLoopBlocks(Track *track) {
@@ -50,7 +51,7 @@ size_t Sync::blocksUntilNextSyncPoint(Track *track, size_t idealBlocks) {
   // examine all sync points where this track could start its next loop
   size_t minBlocks = idealBlocks / 4;
   if (minBlocks < 4) minBlocks = 4;
-  size_t blocksUntil, targetBlock, targetRepeat;
+  size_t blocksUntil, targetBlock, targetRepeat, time;
   size_t bestLength = 0;
   size_t error = 0;
   size_t leastError = 0;
@@ -59,20 +60,37 @@ size_t Sync::blocksUntilNextSyncPoint(Track *track, size_t idealBlocks) {
     // get the number of blocks until this sync point will arrive
     targetBlock = _tracks[p->target]->playingBlock();
     targetRepeat = _tracks[p->target]->playBlocks();
-    if (targetBlock <= (p->time - minBlocks)) blocksUntil = p->time - targetBlock;
-    else blocksUntil = (p->time + targetRepeat) - targetBlock;
-    // avoid extremely short repeats, which may indicate a timing miss
-    //  on the current loop of the track
-    if (blocksUntil < minBlocks) continue;
+    if (targetRepeat == 0) {
+      WARN1("Sync::blocksUntilNextSyncPoint repeat is zero");
+      continue;
+    }
+    time = p->time;
+    if (time >= targetRepeat) {
+      // if the target timepoint will not be played in this cycle, 
+      //  try to sync up with the loop after it's been restarted
+      size_t untilOriginalLoop = _tracks[p->target]->masterBlocks() - time;
+      if (untilOriginalLoop < targetRepeat) {
+        time = targetRepeat - untilOriginalLoop;
+      }
+    }
+    time += targetRepeat;
+    if (targetBlock >= time) {
+      WARN3("Sync::blocksUntilNextSyncPoint time overflow", targetBlock, time);
+      continue;
+    }
+    blocksUntil = (time - targetBlock) % targetRepeat;
     // find the sync point closest to the natural length of the track
-    error = (idealBlocks > blocksUntil) ? 
-      (idealBlocks - blocksUntil) : (blocksUntil - idealBlocks);
-    if ((bestLength == 0) || (error < leastError)) {
-      leastError = error;
-      bestLength = blocksUntil;
+    while (blocksUntil <= idealBlocks + targetRepeat) {
+      error = (idealBlocks > blocksUntil) ? 
+        (idealBlocks - blocksUntil) : (blocksUntil - idealBlocks);
+      if ((bestLength == 0) || (error < leastError)) {
+        leastError = error;
+        bestLength = blocksUntil;
+      }
+      blocksUntil += targetRepeat;
     }
   }
-  return(bestLength);
+  return(bestLength > minBlocks ? bestLength : idealBlocks);
 }
 
 size_t Sync::trackStarting(Track *track) {
@@ -222,7 +240,7 @@ void Sync::setPath(char *path) {
     p->target = buffer[1] % _trackCount;
     p->time = *time;
     p->isProvisional = false;
-    DBG4("Sync::setPath point ", p->source, p->target, p->time);
+    DBG4("Sync::setPath point", p->source, p->target, p->time);
     _addPoint(p);
   }
   f.close();
@@ -242,7 +260,7 @@ void Sync::save() {
     buffer[0] = p->source;
     buffer[1] = p->target;
     *time = p->time;
-    DBG4("Sync::save point ", p->source, p->target, p->time);
+    DBG4("Sync::save point", p->source, p->target, p->time);
     f.write(buffer, sizeof(buffer));
   }
   f.close();
