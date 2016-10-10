@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include "trace.h"
+
 // TRACK **********************************************************************
 
 void Track::setPath(char *path) {
@@ -409,4 +411,15 @@ void PlayCache::readChunk() {
     _tail++; _size++;
     if (_tail >= PLAY_BUFFER_BLOCKS) _tail = 0;
   }
+}
+
+void FileCache::setPath(char *newPath) {
+  if ((newPath != NULL) && (strcmp(newPath, _path) == 0)) {
+    WARN2("FileCache::setPath path is NULL or unchanged", newPath);
+    return;
+  }
+  if (_file) _file.close();
+  reset();
+  _path = newPath;
+  DBG2("FileCache::setPath", _path);
 }

@@ -6,7 +6,6 @@
 
 #include "audio.h"
 #include "sync.h"
-#include "trace.h"
 
 // forward declaration for circular references
 class Sync;
@@ -23,16 +22,7 @@ class FileCache : protected AudioStream {
     FileCache() : AudioStream(0, NULL) { }
     virtual void reset() { }
     char *path() { return(_path); }
-    void setPath(char *newPath) {
-      if ((newPath != NULL) && (strcmp(newPath, _path) == 0)) {
-        WARN2("FileCache::setPath path is NULL or unchanged", newPath);
-        return;
-      }
-      if (_file) _file.close();
-      reset();
-      _path = newPath;
-      DBG2("FileCache::setPath", _path);
-    }
+    void setPath(char *newPath);
     bool isOpen() { return((bool)_file); }
     virtual void update() { }
   protected:

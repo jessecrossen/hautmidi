@@ -1,5 +1,7 @@
 #include "sync.h"
 
+#include "trace.h"
+
 size_t Sync::idealLoopBlocks(Track *track) {
   SyncPoint *p;
   uint8_t ti;
@@ -202,8 +204,12 @@ void Sync::setPath(char *path) {
   _removeAllPoints();
   // load sync points from the path
   if ((_path[0] == '\0') || (! SD.exists(_path))) return;
+  INFO2("Sync::setPath", _path);
   File f = SD.open(_path, O_READ);
-  if (! f) return;
+  if (! f) {
+    WARN2("Sync::setPath unable to open", _path);
+    return;
+  }
   byte buffer[2 + sizeof(size_t)];
   size_t *time = (size_t *)(buffer + 2);
   size_t bytesRead;
@@ -216,6 +222,7 @@ void Sync::setPath(char *path) {
     p->target = buffer[1] % _trackCount;
     p->time = *time;
     p->isProvisional = false;
+    DBG4("Sync::setPath point ", p->source, p->target, p->time);
     _addPoint(p);
   }
   f.close();
@@ -225,13 +232,17 @@ void Sync::save() {
   // save sync points to the current path
   if (_path[0] == '\0') return;
   File f = SD.open(_path, O_WRITE | O_CREAT | O_TRUNC);
-  if (! f) return;
+  if (! f) {
+    WARN2("Sync::save unable to open", _path);
+    return;
+  }
   byte buffer[2 + sizeof(size_t)];
   size_t *time = (size_t *)(buffer + 2);
   for (SyncPoint *p = _head; p; p = p->next) {
     buffer[0] = p->source;
     buffer[1] = p->target;
     *time = p->time;
+    DBG4("Sync::save point ", p->source, p->target, p->time);
     f.write(buffer, sizeof(buffer));
   }
   f.close();
