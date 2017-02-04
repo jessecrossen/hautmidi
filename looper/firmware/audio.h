@@ -41,6 +41,7 @@ class AudioDevice {
       _audioControl->enable();
       _micLevel = 32;
       _lineLevel = 5;
+      _outputLevel = 2;
       _peak = 0.0;
       _integratedPeak = nan("");
     }
@@ -52,6 +53,8 @@ class AudioDevice {
     void setMicLevel(int level);
     int lineLevel();
     void setLineLevel(int level);
+    int outputLevel();
+    void setOutputLevel(int level);
     // update anything that needs to be checked periodically
     void update();
     // get the current peak level
@@ -73,6 +76,7 @@ class AudioDevice {
     AudioConnection *_mixerOutputConnection;
     int _micLevel;
     int _lineLevel;
+    int _outputLevel;
     float _peak;
     float _integratedPeak;
 };

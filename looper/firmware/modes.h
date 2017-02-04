@@ -103,6 +103,19 @@ class MicGainMode : public LineGainMode {
     virtual const char *getLabel() { return("MIC LEVEL: "); };
 };
 
+class VolumeMode : public Mode {
+  public:
+    VolumeMode(AudioDevice *audio) : Mode() {
+      _audio = audio;
+    };
+    virtual int read();
+    virtual int write(int value);
+  protected:
+    virtual void display(LiquidCrystal *lcd);
+    virtual int getMax() { return(18); };
+    AudioDevice *_audio;
+};
+
 class Interface {
   public:
     Interface(LiquidCrystal *lcd, 

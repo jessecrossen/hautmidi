@@ -49,6 +49,16 @@ void AudioDevice::setLineLevel(int level) {
   }
 }
 
+int AudioDevice::outputLevel() { return(_outputLevel); }
+void AudioDevice::setOutputLevel(int level) {
+  if (level < 0) level = 0;
+  if (level > 18) level = 18;
+  if (level != _outputLevel) {
+    _outputLevel = level;
+    _audioControl->lineOutLevel(31 - _outputLevel);
+  }
+}
+
 void AudioDevice::update() {
   if (_peakAnalyzer->available()) {
     if (isnan(_integratedPeak)) _integratedPeak = 0.0;

@@ -253,6 +253,37 @@ void LineGainMode::update(LiquidCrystal *lcd) {
   }
 }
 
+// OUTPUT VOLUME **************************************************************
+
+int VolumeMode::write(int value) {
+  int oldLevel = read();
+  _audio->setOutputLevel(value);
+  int newLevel = read();
+  if (newLevel != oldLevel) {
+    invalidate();
+    onChange();
+  }
+  return(newLevel);
+}
+int VolumeMode::read() {
+  return(_audio->outputLevel());
+}
+
+void VolumeMode::display(LiquidCrystal *lcd) {
+  lcd->setCursor(0, 0);
+  const char *label = "VOLUME:";
+  lcd->print(label);
+  int v = (int)round(((float)read() * 100.0) / (float)getMax());
+  if (v < 10) lcd->print("  ");
+  else if (v < 100) lcd->print(" ");
+  lcd->print(v);
+  lcd->print("%");
+  for (int i = strlen(label) + 4; i < 16; i++) { lcd->print(" "); }
+  // show the recent peak level
+  lcd->setCursor(0, 1);
+  lcd->print("                ");
+}
+
 // INTERFACE ******************************************************************
 
 Interface::Interface(LiquidCrystal *lcd, Encoder *rotary, Bounce *button, 
@@ -282,13 +313,14 @@ Interface::Interface(LiquidCrystal *lcd, Encoder *rotary, Bounce *button,
     return;
   }
   // set up the interface
-  _modeCount = 4;
+  _modeCount = 5;
   _modes = new Mode*[_modeCount];
   _mainScreen = new LoopSelectMode(_tracks, _sync);
   _modes[0] = _mainScreen;
   _modes[1] = new SourceMode(_audio);
   _modes[2] = new LineGainMode(_audio);
   _modes[3] = new MicGainMode(_audio);
+  _modes[4] = new VolumeMode(_audio);
   _modeIndex = 0;
   _modes[_modeIndex]->setActive(true);
   // update all switches without responding so a transition from the initial 
