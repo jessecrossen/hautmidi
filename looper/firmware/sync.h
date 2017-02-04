@@ -6,7 +6,7 @@
 // forward-declare Track because of circular references
 class Track;
 
-
+#define MAX_TRACKS 8
 
 // define a doubly-linked list entry for syncing one track with another
 typedef struct SyncPointStruct {
@@ -30,6 +30,9 @@ class Sync {
       _path[0] = '\0';
       _tracks = tracks;
       _trackCount = trackCount;
+      for (int i = 0; i < trackCount; i++) {
+        _prerolls[i] = 0;
+      }
     }
     // get the ideal number of blocks that should be played for a track
     size_t idealLoopBlocks(Track *track);
@@ -46,6 +49,8 @@ class Sync {
     void commitRecording(Track *track);
     // erase sync points for a track
     void trackErased(Track *track);
+    // set the initial preroll for a track
+    void setInitialPreroll(Track *track);
     
     // set the path to persist sync points to
     char *path() { return(_path); }
@@ -58,10 +63,13 @@ class Sync {
     Track **_tracks;
     int _trackCount;
     char _path[64];
+    size_t _prerolls[MAX_TRACKS];
     
     void _addPoint(SyncPoint *p);
     SyncPoint *_removePoint(SyncPoint *p);
     void _removeAllPoints();
+    
+    void _computePrerolls(size_t startTimes[MAX_TRACKS]);
 
 };
 

@@ -141,6 +141,11 @@ void Track::updatePreroll() {
     _master->preroll = _sync->blocksUntilNextSyncPoint(this, _master->blocks());
   }
 }
+void Track::setPreroll(size_t newPreroll) {
+  if (_master->isOpen()) {
+    _master->preroll = newPreroll;
+  }
+}
 
 void Track::update() {
   // check state

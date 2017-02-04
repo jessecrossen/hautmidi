@@ -176,7 +176,34 @@ void Sync::trackErased(Track *track) {
   save();
 }
 
-// DOUBLY-LINKED LIST *********************************************************
+void Sync::setInitialPreroll(Track *track) {
+  track->setPreroll(_prerolls[track->index]);
+}
+
+void Sync::_computePrerolls(size_t startTimes[MAX_TRACKS]) {
+  int i;
+  // get the length of the longest track in blocks
+  size_t maxBlocks = 0;
+  for (i = 0; i < _trackCount; i++) {
+    if (_tracks[i]->masterBlocks() > maxBlocks) maxBlocks = _tracks[i]->masterBlocks();
+  }
+  // offset start times to get a set of prerolls
+  for (i = 0; i < _trackCount; i++) {
+    if (startTimes[i] > maxBlocks) _prerolls[i] = 0;
+    else _prerolls[i] = maxBlocks - startTimes[i];
+  }
+  // reduce such that the minimum preroll is zero
+  size_t minBlocks = maxBlocks;
+  for (i = 0; i < _trackCount; i++) {
+    if ((_tracks[i]->masterBlocks() > 0) && (_prerolls[i] < minBlocks))
+      minBlocks = _prerolls[i];
+  }
+  for (i = 0; i < _trackCount; i++) {
+    if (_prerolls[i] >= minBlocks) _prerolls[i] -= minBlocks;
+  }
+}
+
+// DOUBLY-LINKED LIST ********************************************************
 
 void Sync::_addPoint(SyncPoint *p) {
   if (_tail == NULL) {
@@ -220,6 +247,10 @@ void Sync::setPath(char *path) {
   strncpy(_path, path, sizeof(_path));
   // remove existing sync points
   _removeAllPoints();
+  // reset block starts
+  for (int i = 0; i < _trackCount; i++) {
+    _prerolls[i] = 0;
+  }
   // load sync points from the path
   if ((_path[0] == '\0') || (! SD.exists(_path))) return;
   INFO2("Sync::setPath", _path);
@@ -229,8 +260,17 @@ void Sync::setPath(char *path) {
     return;
   }
   byte buffer[2 + sizeof(size_t)];
-  size_t *time = (size_t *)(buffer + 2);
+  size_t *time = (size_t *)buffer;
   size_t bytesRead;
+  // read track starting times
+  size_t startTimes[MAX_TRACKS];
+  for (int i = 0; i < _trackCount; i++) {
+    bytesRead = f.read(buffer, sizeof(size_t));
+    if (! (bytesRead >= sizeof(size_t))) return;
+    startTimes[i] = *time;
+  }
+  // read sync points
+  time = (size_t *)(buffer + 2);
   SyncPoint *p;
   while (true) {
     bytesRead = f.read(buffer, sizeof(buffer));
@@ -244,6 +284,8 @@ void Sync::setPath(char *path) {
     _addPoint(p);
   }
   f.close();
+  // calculate the preroll for all tracks
+  _computePrerolls(startTimes);
 }
 
 void Sync::save() {
@@ -254,8 +296,15 @@ void Sync::save() {
     WARN2("Sync::save unable to open", _path);
     return;
   }
+  // write track starting times
   byte buffer[2 + sizeof(size_t)];
-  size_t *time = (size_t *)(buffer + 2);
+  size_t *time = (size_t *)buffer;
+  for (int i = 0; i < _trackCount; i++) {
+    *time = _tracks[i]->playingBlock();
+    f.write(buffer, sizeof(size_t));
+  }
+  // write sync points
+  time = (size_t *)(buffer + 2);
   for (SyncPoint *p = _head; p; p = p->next) {
     buffer[0] = p->source;
     buffer[1] = p->target;

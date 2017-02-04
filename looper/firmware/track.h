@@ -131,6 +131,8 @@ class Track : public AudioStream {
     bool isPlaybackCacheFull();
     // set the track preroll before playback starts
     void updatePreroll();
+    // set the track's preroll
+    void setPreroll(size_t newPreroll);
     
     // handle audio streams into and out of the track
     virtual void update();

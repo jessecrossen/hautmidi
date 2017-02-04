@@ -77,9 +77,9 @@ void LoopSelectMode::_initTracks(int loopIndex) {
   // set a path for the track sync points
   sprintf(path, "/%02d/sync", loopIndex);
   _sync->setPath(path);
-  // update preroll for all tracks
+  // set initial preroll for all tracks
   for (i = 0; i < TRACK_COUNT; i++) {
-    _tracks[i]->updatePreroll();
+    _sync->setInitialPreroll(_tracks[i]);
   }
 }
 
