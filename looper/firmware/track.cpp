@@ -5,7 +5,7 @@
 
 #include "audio.h"
 
-#define TRACE 1
+#define TRACE 0
 #include "trace.h"
 
 // TRACK **********************************************************************
@@ -65,8 +65,12 @@ void Track::setState(TrackState newState) {
   if (newState == oldState) return;
   bool wasRecording = isRecording();
   bool willBeRecording = (newState == MaybeRecording) || (newState == Recording);
-  // open the scratch track before recording starts
-  if ((willBeRecording) && (! wasRecording)) _scratch->open();
+  if ((willBeRecording) && (! wasRecording)) {
+    // open the scratch track before recording starts
+    _scratch->open();
+    // remove any existing preroll
+    this->setPreroll(0);
+  }
   _state = newState;
   sinceStateChange = 0;
   // when cancelled recording stops...
@@ -137,9 +141,9 @@ bool Track::isPlaybackCacheFull() {
 }
 
 void Track::updatePreroll() {
-  if (_master->isOpen()) {
-    _master->preroll = _sync->blocksUntilNextSyncPoint(this, _master->blocks());
-  }
+  size_t idealBlocks = _master->blocks();
+  size_t preroll = _sync->blocksUntilNextSyncPoint(this, idealBlocks);
+  this->setPreroll(preroll == idealBlocks ? 0 : preroll);
 }
 void Track::setPreroll(size_t newPreroll) {
   if (_master->isOpen()) {
