@@ -2,11 +2,11 @@
 
 // state of all LEDs
 led_t leds[LED_COUNT] = {
-    { 3 },  // tempo
-    { 4 },  // track 1
-    { 6 },  // track 2
-    { 22 }, // track 3
-    { 20 }  // track 4
+    { 3, 0 },  // tempo
+    { 4, 0 },  // track 1
+    { 6, 0 },  // track 2
+    { 22, 0 }, // track 3
+    { 20, 0 }  // track 4
   };
   
 // time since led brightnesses were last reduced

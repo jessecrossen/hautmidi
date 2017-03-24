@@ -12,18 +12,39 @@
 #define SCAN_TRACK2 2
 #define SCAN_TRACK3 5
 
+// a wiper location
+typedef struct {
+  int track;
+  int position;
+  bool accent;
+} scan_beat_t;
+
 // an interface state
 typedef struct {
+  int scanCount;
   bool stop, go, single, loop;
-  byte track[4] = { 0, 0, 0, 0 };
   bool storeA, storeB, selectA, selectB;
+  byte track[4] = { 0, 0, 0, 0 };
+  scan_beat_t beats[16] = { 
+      { -1, 0, 0 }, { -1, 0, 0 }, { -1, 0, 0 }, { -1, 0, 0 },
+      { -1, 0, 0 }, { -1, 0, 0 }, { -1, 0, 0 }, { -1, 0, 0 },
+      { -1, 0, 0 }, { -1, 0, 0 }, { -1, 0, 0 }, { -1, 0, 0 },
+      { -1, 0, 0 }, { -1, 0, 0 }, { -1, 0, 0 }, { -1, 0, 0 }
+    };  
 } scan_t;
 
 // initialize the scanner
 void scan_init();
-// scan and return the current state of the switches
-scan_t scan();
+// scan state from the device
+void scan(scan_t *state);
+// integrate accumulated readings to reduce noise
+void integrate_scan(scan_t *state);
+// reset scan state for another run
+void reset_scan(scan_t *state);
 // log a scan state to the serial monitor for debugging
-void print_scan(scan_t state);
+void print_digital(scan_t *state);
+void print_accents(scan_t *state);
+void print_tracks(scan_t *state);
+void print_positions(scan_t *state);
 
 #endif

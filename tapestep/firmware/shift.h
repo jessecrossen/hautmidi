@@ -17,5 +17,8 @@ void shift_enable(bool upper, bool lower);
 int shift_fill(bool bit);
 // push the given bit in and return the new state as a 16-bit int
 int shift_bit(bool bit);
+// push the given state to the shifter
+int shift_set(int state);
+int shift_set(int state, bool next_bit);
 
 #endif

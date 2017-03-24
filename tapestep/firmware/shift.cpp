@@ -15,7 +15,7 @@ void shift_enable(bool upper, bool lower) {
 }
 
 int shift_fill(bool bit) {
-  for (int i = 0; i < 16; i++) shift_bit(bit);
+  for (int i = 0; i < 17; i++) shift_bit(bit);
   return(shift_state);
 }
 
@@ -25,7 +25,20 @@ int shift_bit(bool bit) {
   delayMicroseconds(1);
   digitalWrite(SHIFT_CLK, 0);
   // shift our internal copy of the shifter's state
+  int last_state = shift_state;
   shift_state >>= 1;
   shift_state |= bit << 15;
-  return(shift_state);
+  return(last_state);
+}
+
+int shift_set(int v, bool next_bit) {
+  for (int i = 0; i < 16; i++) {
+    shift_bit(v & 0x1);
+    v >>= 1;
+  }
+  // push a dummy bit into the pipe to commit the value
+  return(shift_bit(next_bit));
+}
+int shift_set(int v) {
+  return(shift_set(v, 0));
 }
