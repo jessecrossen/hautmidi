@@ -69,7 +69,7 @@ void set_tempo(int newTempo, bool setEncoder) {
   // update the advance time and remainder
   float adv = (float)0x100000000 / measureMicroseconds;
   timeAdvance = (unsigned int)adv;
-  adv = (float)0x100000000 * (adv - (float)timeAdvance);
+  adv = (float)0x10000 * (adv - (float)timeAdvance);
   timeRemainder = (unsigned int)(adv + 0.5);
   // update the encoder if requested
   if (setEncoder) tempoEncoder.write(tempo * 4);
@@ -130,7 +130,10 @@ void rhythm_update() {
   time += elapsed * timeAdvance;
   timeError += elapsed * timeRemainder;
   // when the error rolls over, transfer to the time
-  if (timeError < lastError) time++;
+  if ((timeError & 0xFFFF0000) != 0) {
+    time += timeError >> 16;
+    timeError &= 0x0000FFFF;
+  }
   // light the tempo light on the beat and check looping
   bool wrapped = lastTime > time;
   if (wrapped) {
