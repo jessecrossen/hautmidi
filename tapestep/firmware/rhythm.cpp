@@ -11,6 +11,8 @@ typedef struct {
   int track;
   int note;
   bool accent;
+  bool on;
+  elapsedMillis age;
 } beat_t;
 // beats to play
 beat_t beats[16];
@@ -59,6 +61,31 @@ int measureCount = 0;
 // whether to loop playback
 bool loopPlayback = 0;
 
+void reset_time() {
+  lastTime = 0xFFFFFFFF;
+  time = 0;
+  lastError = timeError = 0;
+  lastTimer = timer;
+  measureCount = 0;
+}
+
+void silence_notes() {
+  for (int i = 0; i < beatCount; i++) {
+    if ((beats[i].on) && (beats[i].age >= 10)) {
+      usbMIDI.sendNoteOff(beats[i].note, 
+        beats[i].accent ? 127 : 80, 1);
+      beats[i].on = 0;
+    }
+  }
+}
+
+void send_note(int i) {
+  usbMIDI.sendNoteOn(beats[i].note, 
+    beats[i].accent ? 127 : 80, 1);
+  beats[i].age = 0;
+  beats[i].on = 1;
+}
+
 void set_tempo(int newTempo, bool setEncoder) {
   // store and clamp tempo
   tempo = newTempo;
@@ -73,14 +100,6 @@ void set_tempo(int newTempo, bool setEncoder) {
   timeRemainder = (unsigned int)(adv + 0.5);
   // update the encoder if requested
   if (setEncoder) tempoEncoder.write(tempo * 4);
-}
-
-void resetTime() {
-  lastTime = 0xFFFFFFFF;
-  time = 0;
-  lastError = timeError = 0;
-  lastTimer = timer;
-  measureCount = 0;
 }
 
 void tap_tempo() {
@@ -98,7 +117,7 @@ void tap_tempo() {
     }
     set_tempo((60000 * tapCount) / tapSum, 1);
     // reset the clock to sync up with the tapped beat
-    resetTime();
+    reset_time();
   }
   sinceLastTempoTap = 0;
 }
@@ -130,7 +149,7 @@ void rhythm_update() {
   time += elapsed * timeAdvance;
   timeError += elapsed * timeRemainder;
   // when the error rolls over, transfer to the time
-  if ((timeError & 0xFFFF0000) != 0) {
+  if (timeError & 0xFFFF0000) {
     time += timeError >> 16;
     timeError &= 0x0000FFFF;
   }
@@ -158,17 +177,20 @@ void rhythm_update() {
         ((wrapped) && ((lastTime < t) || (time >= t)))) {
       light_led(TRACK1_LED + beats[i].track, 
                 beats[i].accent ? BRIGHT_ACCENT : BRIGHT_NORMAL);
+      send_note(i);
     }
   }
+  // stop any beats that need to be stopped
+  silence_notes();
   // save the current time for next iteration
   lastTime = time;
   lastError = timeError;
 }
 
-int mapNote(int track, int offset) {
+int map_note(int track, int offset) {
   return(32 + ((track * 12) + offset));
 }
-int mapTime(int position) {
+int map_time(int position) {
   if (position <= MIN_POS) return(0);
   unsigned int t = (0x10000 * (position - MIN_POS)) / (MAX_POS - MIN_POS);
   if (t >= 0xFFFF) t = 0xFFFF;
@@ -187,9 +209,9 @@ void rhythm_set(scan_t *state) {
   for (i = 0; i < 16; i++) {
     b = state->beats[i];
     if (b.track >= 0) {
-      beats[beatCount].time = mapTime(b.position);
+      beats[beatCount].time = map_time(b.position);
       beats[beatCount].track = b.track;
-      beats[beatCount].note = mapNote(b.track, state->track[b.track]);
+      beats[beatCount].note = map_note(b.track, state->track[b.track]);
       beats[beatCount].accent = b.accent;
       beatCount++;
     }
@@ -199,7 +221,7 @@ void rhythm_set(scan_t *state) {
 void rhythm_start() {
   // reset when starting
   playing = 1;
-  resetTime();
+  reset_time();
 }
 
 void rhythm_stop() {
