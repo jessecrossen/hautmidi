@@ -14,7 +14,7 @@
 // MIDI params
 #define MIDI_CHANNEL 1
 // uncomment to enable serial debugging
-#define SERIAL_DEBUG 1
+// #define SERIAL_DEBUG 1
 
 #include <EEPROM.h>
 
