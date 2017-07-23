@@ -13,6 +13,7 @@
 #define BUTTON_COUNT 20
 // MIDI params
 #define MIDI_CHANNEL 1
+#define ROOT_NOTE 48
 // uncomment to enable serial debugging
 // #define SERIAL_DEBUG 1
 
@@ -140,18 +141,20 @@ void silence_note(int i) {
 }
 
 void output_notes() {
-  uint8_t number;
+  uint8_t number, started;
   for (int i = 0; i < BUTTON_COUNT; i++) {
     if (notes[i].volume > 0) {
-      number = 60 + tune + i;
+      started = 0;
+      number = ROOT_NOTE + tune + i;
       if (number != notes[i].number) silence_note(i); 
       if (! notes[i].playing) {
         notes[i].number = number;
         usbMIDI.sendNoteOn(notes[i].number, notes[i].volume, MIDI_CHANNEL);
         log_event(" on", notes[i].number, notes[i].volume);
         notes[i].playing = 1;
+        started = 1;
       }
-      if (notes[i].volume != notes[i].last_volume) {
+      if ((started) || (notes[i].volume != notes[i].last_volume)) {
         usbMIDI.sendPolyPressure(notes[i].number, notes[i].volume, MIDI_CHANNEL);
         log_event(" pp", notes[i].number, notes[i].volume);
       }
@@ -189,7 +192,7 @@ void setup() {
   pinMode(SWITCH_A_DN, INPUT_PULLUP);
   pinMode(SWITCH_B_UP, INPUT_PULLUP);
   pinMode(SWITCH_B_DN, INPUT_PULLUP);
-  delay(1000);
+  delay(500);
   load_calibration();
 }
 
